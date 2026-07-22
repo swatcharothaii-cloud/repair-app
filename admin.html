@@ -117,6 +117,7 @@
     </select>
     <input type="text" id="filter-search" placeholder="Search site / reporter / ticket no... / ค้นหาสถานที่ / ผู้แจ้ง / เลขที่... / 搜索地点／报修人／单号…">
     <button class="btn btn-outline btn-sm" id="export-excel-btn" style="white-space:nowrap;">📊 Export Excel / ส่งออก Excel / 导出 Excel</button>
+    <button class="btn btn-outline btn-sm" id="export-pdf-btn" style="white-space:nowrap;">📄 Export PDF / ส่งออกไลน์งาน PDF / 导出 PDF</button>
   </div>
 
   <div class="table-wrap">
@@ -218,6 +219,9 @@
   <button class="lightbox-nav lightbox-next" id="lightbox-next">›</button>
   <div class="lightbox-counter" id="lightbox-counter"></div>
 </div>
+
+<!-- ============ PRINT REPORT (ใช้ตอนกด "Export PDF" — ซ่อนอยู่บนหน้าจอปกติ แสดงเฉพาะตอนสั่งพิมพ์) ============ -->
+<div id="print-report"></div>
 
 <div id="toast-container"></div>
 

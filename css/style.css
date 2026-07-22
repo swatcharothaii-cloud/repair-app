@@ -571,6 +571,37 @@ tbody tr:hover { background: #eff6ff; }
   .lightbox-close { width: 36px; height: 36px; font-size: 16px; }
 }
 
+/* ---------- Print report (Export PDF) ---------- */
+/* บนหน้าจอปกติ #print-report ซ่อนอยู่เสมอ — จะถูกเติมเนื้อหาและแสดงผลเฉพาะตอนสั่งพิมพ์เท่านั้น */
+#print-report { display: none; }
+
+.print-report-header {
+  display: flex; align-items: center; gap: 14px; margin-bottom: 14px;
+  padding-bottom: 12px; border-bottom: 2px solid #1f2937;
+}
+.print-report-header img { height: 42px; }
+.print-report-header .titles h1 { margin: 0; font-size: 18px; }
+.print-report-header .titles .sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.print-report-meta { font-size: 11.5px; color: var(--text-muted); margin-bottom: 14px; line-height: 1.5; }
+.print-report-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.print-report-table th, .print-report-table td {
+  border: 1px solid #cbd5e1; padding: 6px 7px; text-align: left; vertical-align: top;
+}
+.print-report-table th { background: #f1f5f9; font-weight: 600; }
+.print-report-table img.print-thumb { width: 46px; height: 46px; object-fit: cover; border-radius: 6px; display: block; }
+.print-report-table .no-photo { width: 46px; height: 46px; display:flex; align-items:center; justify-content:center; font-size: 10px; color: #9ca3af; background:#f1f5f9; border-radius:6px; }
+.print-report-table tr { break-inside: avoid; }
+
+@media print {
+  @page { size: A4 landscape; margin: 10mm; }
+  body * { visibility: hidden; }
+  #print-report, #print-report * { visibility: visible; }
+  #print-report {
+    display: block !important;
+    position: absolute; top: 0; left: 0; width: 100%;
+  }
+}
+
 .filter-bar { display:flex; flex-wrap:wrap; gap:10px; margin-bottom: 16px; }
 .filter-bar select, .filter-bar input { width:auto; min-width:140px; }
 

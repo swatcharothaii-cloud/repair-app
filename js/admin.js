@@ -605,6 +605,88 @@ async function main() {
     }
   });
 
+  // ---------------- EXPORT TO PDF (ไลน์งาน — ใช้หน้าต่างสั่งพิมพ์ของเบราว์เซอร์ "Save as PDF") ----------------
+  // ใช้วิธีนี้ (ไม่ใช้ไลบรารีสร้าง PDF เช่น jsPDF) เพราะฟอนต์ไทย/จีนของไลบรารีเหล่านั้นมักไม่รองรับ
+  // ข้อความไทย/จีนจะกลายเป็นสี่เหลี่ยมว่างๆ ส่วนเบราว์เซอร์เองรองรับฟอนต์ระบบได้ครบทุกภาษาอยู่แล้ว
+  // และไม่ต้องใช้ไลบรารีเพิ่มเติมจาก CDN เลย (ฟรี ไม่มีข้อจำกัด)
+  document.getElementById("export-pdf-btn").addEventListener("click", () => {
+    const items = applyTableFilters(lastPeriodItems);
+    if (items.length === 0) {
+      showToast(T.msgNoItemsToExport);
+      return;
+    }
+
+    const periodTriMap = { day: T.periodDay, week: T.periodWeek, month: T.periodMonth, all: T.periodAll };
+    const periodLabelTri = periodTriMap[selectedPeriod] || T.periodAll;
+    const projectScopeLabel = !selectedProjectScope
+      ? T.filterAllProjects
+      : selectedProjectScope === UNASSIGNED_PROJECT_KEY
+      ? T.unassignedProjectLabel
+      : selectedProjectScope;
+    const statusFilterVal = document.getElementById("filter-status").value;
+    const categoryFilterVal = document.getElementById("filter-category").value;
+    const scopeParts = [
+      periodLabelTri,
+      escapeHtml(projectScopeLabel),
+      statusFilterVal ? statusTri(statusFilterVal) : T.filterAllStatus,
+      categoryFilterVal ? catTri(categoryFilterVal) : T.filterAllCategory,
+    ];
+
+    const rowsHtml = items
+      .map((r) => {
+        const thumbUrl = r.images && r.images[0] ? r.images[0].url : null;
+        const thumbCell = thumbUrl ? `<img class="print-thumb" src="${thumbUrl}">` : `<div class="no-photo">${T.pdfNoPhoto}</div>`;
+        const overdue = isOverdue(r.dueDate, r.status, STATUS.DONE);
+        return `
+          <tr>
+            <td>${thumbCell}</td>
+            <td>${escapeHtml(r.ticketId || r.id)}</td>
+            <td>${escapeHtml(r.project || T.unassignedProjectLabel)}</td>
+            <td>${escapeHtml(r.siteName || "-")}</td>
+            <td>${r.category ? escapeHtml(catTri(r.category)) : "-"}</td>
+            <td>${escapeHtml(r.reporterName || "-")}</td>
+            <td>${escapeHtml(r.description || "-")}</td>
+            <td>${formatDateThai(r.dueDate)}${overdue ? " ⚠️" : ""}</td>
+            <td>${r.status ? escapeHtml(statusTri(r.status)) : "-"}</td>
+          </tr>`;
+      })
+      .join("");
+
+    const generatedAt = new Date().toLocaleString("th-TH", { dateStyle: "medium", timeStyle: "short" });
+
+    document.getElementById("print-report").innerHTML = `
+      <div class="print-report-header">
+        ${COMPANY?.logo ? `<img src="${COMPANY.logo}">` : ""}
+        <div class="titles">
+          <h1>${T.pdfReportTitle} — ${escapeHtml(COMPANY?.nameTh || "")}</h1>
+          <div class="sub">${escapeHtml(COMPANY?.nameEn || "")}</div>
+        </div>
+      </div>
+      <div class="print-report-meta">
+        ${T.pdfGeneratedAtPrefix}: ${generatedAt} &nbsp;·&nbsp; ${T.pdfExportScopePrefix}: ${scopeParts.join(" / ")} &nbsp;·&nbsp; ${T.statTotal}: ${items.length}
+      </div>
+      <table class="print-report-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>${T.thTicketNo}</th>
+            <th>${T.thProject}</th>
+            <th>${T.labelSiteNameModal}</th>
+            <th>${T.thCategory}</th>
+            <th>${T.thReporter}</th>
+            <th>${T.labelDescriptionModal}</th>
+            <th>${T.thDueDate}</th>
+            <th>${T.thStatus}</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    `;
+
+    showToast(T.pdfPrintHint, 5000);
+    setTimeout(() => window.print(), 300);
+  });
+
   function withinPeriod(dateStr) {
     if (selectedPeriod === "all") return true;
     if (!dateStr) return false;
