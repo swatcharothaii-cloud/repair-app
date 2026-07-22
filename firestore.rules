@@ -1,0 +1,52 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============================================================
+    //  หมายเหตุด้านความปลอดภัย (อ่านก่อนใช้งาน)
+    //  หน้าแอดมิน (admin.html) ไม่ใช้ระบบล็อกอิน/รหัสผ่านแล้ว — ระบุตัวตนด้วยการ
+    //  "เลือกชื่อ" จากรายชื่อคงที่ (ดู ADMINS ใน js/config.js) เพื่อบันทึกว่าใครแก้ไขข้อมูล
+    //  ผลคือ: ใครก็ตามที่มีลิงก์ไปหน้าแอดมิน สามารถดู/แก้ไขรายการแจ้งซ่อมทั้งหมดได้
+    //  โดยไม่ต้องพิสูจน์ตัวตนใดๆ (การ "เลือกชื่อ" เป็นการบันทึกผู้แก้ไข ไม่ใช่การยืนยันตัวตน)
+    //  จึงควร "ไม่เผยแพร่ลิงก์หน้าแอดมินต่อสาธารณะ" ให้เฉพาะทีมงานเท่านั้น
+    // ============================================================
+
+    match /repairRequests/{ticketId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if request.resource.data.keys().hasAll(
+                        ['siteName','reporterName','category','description','dateReported','dueDate','status']
+                      )
+                      && request.resource.data.status == 'รอแก้ไข';
+      allow update: if true;
+      // ปิดการลบไว้ก่อน (แอปยังไม่มีฟีเจอร์ลบรายการ) กันลบข้อมูลโดยไม่ตั้งใจ/โดยไม่ทราบสาเหตุ
+      allow delete: if false;
+    }
+
+    // ไม่ได้ใช้งานแล้ว (เดิมใช้คู่กับระบบล็อกอินด้วยอีเมล/รหัสผ่าน)
+    match /admins/{uid} {
+      allow read, write: if false;
+    }
+
+    // ประเภทงาน — แก้ไข/เพิ่มเองได้ที่หน้าแอดมิน (ดู "จัดการประเภทงาน" ในแดชบอร์ด) ไม่ลบออกจริง
+    // (ใช้ active: false แทนการลบ) เพื่อไม่ให้กระทบรายการแจ้งซ่อมเก่าที่เคยอ้างอิงประเภทงานนั้นไว้
+    match /categories/{categoryId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if request.resource.data.keys().hasAll(['label', 'icon', 'color', 'active']);
+      allow update: if true;
+      allow delete: if false;
+    }
+
+    // โปรเจกต์ — แยกขอบเขตรายการแจ้งซ่อมเป็นแต่ละโปรเจกต์ แก้ไข/เพิ่มเองได้ที่หน้าแอดมิน (ดู
+    // "จัดการโปรเจกต์" ในแดชบอร์ด) ไม่ลบออกจริง (ใช้ active: false แทนการลบ) เพื่อไม่ให้กระทบ
+    // รายการแจ้งซ่อมเก่าที่เคยอ้างอิงโปรเจกต์นั้นไว้
+    match /projects/{projectId} {
+      allow get: if true;
+      allow list: if true;
+      allow create: if request.resource.data.keys().hasAll(['label', 'color', 'active']);
+      allow update: if true;
+      allow delete: if false;
+    }
+  }
+}
