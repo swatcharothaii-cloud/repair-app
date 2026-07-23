@@ -103,6 +103,28 @@ export const STATUS_STYLE = {
 export const MAX_IMAGES = 5;
 export const MAX_IMAGE_MB = 8; // ขนาดไฟล์ต้นฉบับสูงสุดที่ยอมรับก่อนบีบอัด
 
+// ============================================================
+//  ระบบส่งงานให้ผู้รับเหมา (Contractor Jobs) — เฟส 1
+// ============================================================
+export const CONTRACTOR_JOB_TYPE = {
+  FIX: "fix", // งานแก้ไข — ระบุวันเข้าหน้างาน + จำนวนวันซ่อม
+  QUOTE: "quote", // งานใหม่ที่ต้องเสนอราคา — รับ/ปฏิเสธงาน แล้วเสนอวัน+ราคา
+};
+
+export const CONTRACTOR_JOB_STATUS = {
+  WAITING: "รอผู้รับเหมาตอบรับ",
+  CONFIRMED: "ผู้รับเหมารับงานแล้ว", // fix: ยืนยันวันเข้าหน้างานแล้ว / quote: กดรับงาน+เสนอราคาแล้ว
+  REJECTED: "ผู้รับเหมาปฏิเสธ",
+  DONE: "เสร็จสิ้น",
+};
+
+export const CONTRACTOR_JOB_STATUS_STYLE = {
+  [CONTRACTOR_JOB_STATUS.WAITING]: { bg: "#fef3c7", text: "#92400e", dot: "#f59e0b" },
+  [CONTRACTOR_JOB_STATUS.CONFIRMED]: { bg: "#d1fae5", text: "#065f46", dot: "#10b981" },
+  [CONTRACTOR_JOB_STATUS.REJECTED]: { bg: "#fee2e2", text: "#991b1b", dot: "#ef4444" },
+  [CONTRACTOR_JOB_STATUS.DONE]: { bg: "#dbeafe", text: "#1e40af", dot: "#3b82f6" },
+};
+
 // รูปภาพจะถูกบีบอัดฝั่งเบราว์เซอร์แล้วเก็บเป็น base64 ตรงใน Firestore
 // (ไม่ใช้ Firebase Storage เพื่อเลี่ยงการต้องอัปเกรดเป็นแผน Blaze ที่ต้องผูกบัตรเครดิต)
 // Firestore เอกสารหนึ่งชิ้นมีขนาดจำกัดไม่เกิน 1MB จึงต้องบีบอัดรูปให้เล็กพอ

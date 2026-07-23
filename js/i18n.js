@@ -48,10 +48,24 @@ export const DEPARTMENT_TRI = {
   "อื่นๆ": tri("Other", "อื่นๆ", "其他"),
 };
 
+// ---------- สถานะงานผู้รับเหมา (key = CONTRACTOR_JOB_STATUS.* ใน config.js) ----------
+export const CONTRACTOR_JOB_STATUS_TRI = {
+  "รอผู้รับเหมาตอบรับ": tri("Waiting for contractor", "รอผู้รับเหมาตอบรับ", "等待承包商回复"),
+  "ผู้รับเหมารับงานแล้ว": tri("Contractor confirmed", "ผู้รับเหมารับงานแล้ว", "承包商已确认"),
+  "ผู้รับเหมาปฏิเสธ": tri("Contractor rejected", "ผู้รับเหมาปฏิเสธ", "承包商已拒绝"),
+  "เสร็จสิ้น": tri("Completed", "เสร็จสิ้น", "已完成"),
+};
+
 // ถ้าไม่พบใน dictionary (เช่นข้อมูลเก่า/ค่าที่ไม่คาดคิด) จะคืนค่าดั้งเดิมกลับไปแทนที่จะพัง
 export function catTri(label) { return CATEGORY_TRI[label] || label; }
 export function statusTri(label) { return STATUS_TRI[label] || label; }
 export function deptTri(label) { return DEPARTMENT_TRI[label] || label; }
+export function contractorJobStatusTri(label) { return CONTRACTOR_JOB_STATUS_TRI[label] || label; }
+export function jobTypeTri(type) {
+  return type === "quote"
+    ? tri("New work (quote needed)", "งานใหม่ที่ต้องเสนอราคา", "新工程（需报价）")
+    : tri("Fix / repair work", "งานแก้ไข", "维修工程");
+}
 
 // ---------- ข้อความ UI ทั่วไป (static text) ----------
 export const T = {
@@ -238,6 +252,29 @@ export const T = {
   // -------- ป้ายกำกับข้อมูลบริษัท (utils.js) --------
   taxIdLabel: tri("Tax ID", "เลขประจำตัวผู้เสียภาษี", "税号"),
   headOfficeLabel: tri("Head Office", "สำนักงานใหญ่", "总部"),
+
+  // -------- ระบบส่งงานให้ผู้รับเหมา (contractor.html / contractor-page.js) --------
+  contractorPageTitle: tri("Job details for contractor", "รายละเอียดงานสำหรับผู้รับเหมา", "承包商工程详情"),
+  contractorJobNotFound: tri("Job not found or link expired", "ไม่พบข้อมูลงานนี้ หรือลิงก์ไม่ถูกต้อง", "未找到该工程或链接无效"),
+  contractorSiteVisitDateLabel: tri("Site visit date", "วันที่เข้าหน้างาน", "现场勘查日期"),
+  contractorRepairDaysLabel: tri("Number of days to complete", "จำนวนวันที่ใช้ซ่อม", "维修所需天数"),
+  contractorSubmitBtn: tri("Submit", "ส่งข้อมูล", "提交"),
+  contractorAcceptBtn: tri("Accept job", "รับงาน", "接受工程"),
+  contractorRejectBtn: tri("Reject job", "ปฏิเสธงาน", "拒绝工程"),
+  contractorQuoteDaysLabel: tri("Days needed", "จำนวนวันที่ใช้ทำงาน", "所需天数"),
+  contractorQuotePriceLabel: tri("Quoted price (THB)", "ราคาที่เสนอ (บาท)", "报价（泰铢）"),
+  contractorQuoteNoteLabel: tri("Additional notes", "หมายเหตุเพิ่มเติม", "备注"),
+  contractorSubmittedThanks: tri("Submitted — thank you!", "ส่งข้อมูลเรียบร้อยแล้ว ขอบคุณครับ/ค่ะ", "已提交，谢谢！"),
+  contractorRejectedMsg: tri("You have rejected this job", "คุณได้ปฏิเสธงานนี้แล้ว", "您已拒绝此工程"),
+  btnAddContractorJob: tri("+ Send job to contractor", "+ ส่งงานให้ผู้รับเหมา", "+ 发送工程给承包商"),
+  contractorJobTypeLabel: tri("Job type", "ประเภทงาน", "工程类型"),
+  contractorLabel: tri("Contractor", "ผู้รับเหมา", "承包商"),
+  copyLinkBtn: tri("📋 Copy link", "📋 คัดลอกลิงก์", "📋 复制链接"),
+  linkCopiedMsg: tri("Link copied — paste it into LINE chat", "คัดลอกลิงก์แล้ว นำไปวางในแชทไลน์ได้เลย", "链接已复制，可粘贴到 LINE 聊天中"),
+  manageContractorsTitle: tri("👷 Manage Contractors", "👷 จัดการรายชื่อผู้รับเหมา", "👷 管理承包商名单"),
+  contractorNameLabel: tri("Contractor name *", "ชื่อผู้รับเหมา *", "承包商名称 *"),
+  contractorLineContactLabel: tri("LINE contact (for reference)", "ช่องทางติดต่อไลน์ (สำหรับอ้างอิง)", "LINE 联系方式（仅供参考）"),
+  contractorPhoneLabel: tri("Phone", "เบอร์โทร", "电话"),
 };
 
 // ---------- ข้อความที่มีตัวแปรแทรก (parametrized) ----------

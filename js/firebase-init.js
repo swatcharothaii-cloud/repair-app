@@ -50,3 +50,5 @@ export const REQUESTS_COLLECTION = "repairRequests";
 export const ADMINS_COLLECTION = "admins";
 export const CATEGORIES_COLLECTION = "categories";
 export const PROJECTS_COLLECTION = "projects";
+export const CONTRACTORS_COLLECTION = "contractors";
+export const CONTRACTOR_JOBS_COLLECTION = "contractorJobs";

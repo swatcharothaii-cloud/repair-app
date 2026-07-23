@@ -1,9 +1,13 @@
-import { DEPARTMENTS, STATUS, STATUS_STYLE, LIFF_ID_ADMIN, ADMINS, COMPANY, MAX_IMAGES, MAX_IMAGE_MB } from "./config.js";
+import {
+  DEPARTMENTS, STATUS, STATUS_STYLE, LIFF_ID_ADMIN, ADMINS, COMPANY, MAX_IMAGES, MAX_IMAGE_MB,
+  CONTRACTOR_JOB_TYPE, CONTRACTOR_JOB_STATUS_STYLE,
+} from "./config.js";
 import { showToast, formatDateThai, isOverdue, renderCompanyBrandBar } from "./utils.js";
 import { compressImageToDataUrl } from "./image-compress.js";
 import {
   T, tri, catTri, statusTri, deptTri, idNumberLabel,
   msgMaxImages, msgMaxAfterImages, msgFileTooLarge, msgExportSuccess,
+  jobTypeTri, contractorJobStatusTri,
 } from "./i18n.js";
 
 renderCompanyBrandBar("brand-bar", COMPANY);
@@ -426,6 +430,255 @@ async function main() {
       submitBtn.disabled = false;
     }
   });
+
+  // ============================================================
+  //  ระบบส่งงานให้ผู้รับเหมา (Contractor Jobs) — เฟส 1
+  // ============================================================
+  const { loadContractors, addContractor } = await import("./contractors.js");
+  const {
+    addContractorJob,
+    watchAllContractorJobs,
+  } = await import("./contractor-jobs.js");
+
+  let contractors = [];
+  try {
+    contractors = await loadContractors();
+  } catch (e) {
+    console.warn("โหลดรายชื่อผู้รับเหมาไม่สำเร็จ", e);
+  }
+
+  function renderContractorManageList() {
+    const listEl = document.getElementById("contractor-manage-list");
+    if (!contractors.length) {
+      listEl.innerHTML = `<p class="hint">No contractors yet / ยังไม่มีรายชื่อผู้รับเหมา / 暂无承包商名单</p>`;
+      return;
+    }
+    listEl.innerHTML = contractors
+      .map(
+        (c) => `
+        <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); flex-wrap:wrap;">
+          <strong style="flex:1; min-width:120px;">${escapeHtmlGlobal(c.name)}</strong>
+          <span class="hint" style="flex:1; min-width:120px;">${escapeHtmlGlobal(c.lineContact || "-")}</span>
+          <span class="hint" style="flex:0 0 auto;">${escapeHtmlGlobal(c.phone || "-")}</span>
+        </div>`
+      )
+      .join("");
+  }
+  renderContractorManageList();
+
+  document.getElementById("contractor-add-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const nameInput = document.getElementById("ctr-name");
+    const lineInput = document.getElementById("ctr-line");
+    const phoneInput = document.getElementById("ctr-phone");
+    const name = nameInput.value.trim();
+    if (!name) {
+      showToast(T.errorPrefix + "กรุณาระบุชื่อผู้รับเหมา");
+      return;
+    }
+    try {
+      const newId = await addContractor({ name, lineContact: lineInput.value, phone: phoneInput.value });
+      contractors.push({ id: newId, name, lineContact: lineInput.value.trim(), phone: phoneInput.value.trim(), active: true });
+      renderContractorManageList();
+      refreshContractorSelect();
+      nameInput.value = "";
+      lineInput.value = "";
+      phoneInput.value = "";
+      showToast(T.msgCategorySaved);
+    } catch (err) {
+      console.error(err);
+      showToast(T.errorPrefix + err.message);
+    }
+  });
+
+  function refreshContractorSelect() {
+    const sel = document.getElementById("cj-contractor");
+    sel.innerHTML = contractors
+      .filter((c) => c.active !== false)
+      .map((c) => `<option value="${c.id}" data-name="${escapeHtmlGlobal(c.name)}">${escapeHtmlGlobal(c.name)}</option>`)
+      .join("");
+  }
+  function refreshContractorJobProjectSelect() {
+    const sel = document.getElementById("cj-project");
+    sel.innerHTML = projects
+      .filter((p) => p.active !== false)
+      .map((p) => `<option value="${p.id}" data-label="${escapeHtmlGlobal(p.label)}">${escapeHtmlGlobal(p.label)}</option>`)
+      .join("");
+  }
+  refreshContractorSelect();
+  refreshContractorJobProjectSelect();
+
+  // ---------------- สร้างงานส่งให้ผู้รับเหมา ----------------
+  let cjImages = [];
+  function renderCjImagePreviews() {
+    const el = document.getElementById("cj-image-previews");
+    el.innerHTML = cjImages
+      .map(
+        (img, i) => `
+      <div style="position:relative;">
+        <img src="${img.url}" style="width:64px; height:64px; object-fit:cover; border-radius:8px;">
+        <button type="button" class="cj-remove-img-btn" data-idx="${i}" style="position:absolute; top:-6px; right:-6px; background:#ef4444; color:#fff; border:none; border-radius:50%; width:20px; height:20px; cursor:pointer; font-size:12px;">✕</button>
+      </div>`
+      )
+      .join("");
+    el.querySelectorAll(".cj-remove-img-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        cjImages.splice(Number(btn.dataset.idx), 1);
+        renderCjImagePreviews();
+      });
+    });
+  }
+
+  document.getElementById("cj-images").addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files || []);
+    const room = Math.max(0, MAX_IMAGES - cjImages.length);
+    for (const file of files.slice(0, room)) {
+      if (file.size > MAX_IMAGE_MB * 1024 * 1024) continue;
+      try {
+        const url = await compressImageToDataUrl(file);
+        cjImages.push({ url });
+      } catch (err) {
+        console.error(err);
+      }
+    }
+    renderCjImagePreviews();
+    e.target.value = "";
+  });
+
+  document.getElementById("cj-type").addEventListener("change", (e) => {
+    document.getElementById("cj-visit-date-field").style.display = e.target.value === CONTRACTOR_JOB_TYPE.FIX ? "block" : "none";
+  });
+
+  document.getElementById("add-contractor-job-btn").addEventListener("click", () => {
+    if (!contractors.length) {
+      showToast(T.errorPrefix + "กรุณาเพิ่มรายชื่อผู้รับเหมาก่อน (ดูหัวข้อ 👷 Manage Contractors ด้านบน)");
+      return;
+    }
+    refreshContractorSelect();
+    refreshContractorJobProjectSelect();
+    document.getElementById("cj-type").value = "fix";
+    document.getElementById("cj-visit-date-field").style.display = "block";
+    document.getElementById("cj-site").value = "";
+    document.getElementById("cj-description").value = "";
+    document.getElementById("cj-visit-date").value = "";
+    cjImages = [];
+    renderCjImagePreviews();
+    document.getElementById("contractor-job-modal").style.display = "flex";
+  });
+  document.getElementById("close-contractor-job-modal").addEventListener("click", () => {
+    document.getElementById("contractor-job-modal").style.display = "none";
+  });
+  document.getElementById("cancel-contractor-job-btn").addEventListener("click", () => {
+    document.getElementById("contractor-job-modal").style.display = "none";
+  });
+
+  document.getElementById("save-contractor-job-btn").addEventListener("click", async () => {
+    const type = document.getElementById("cj-type").value;
+    const projectSel = document.getElementById("cj-project");
+    const projectId = projectSel.value;
+    const project = projectSel.selectedOptions[0]?.dataset.label || "";
+    const siteName = document.getElementById("cj-site").value.trim();
+    const description = document.getElementById("cj-description").value.trim();
+    const contractorSel = document.getElementById("cj-contractor");
+    const contractorId = contractorSel.value;
+    const contractorName = contractorSel.selectedOptions[0]?.dataset.name || "";
+    const siteVisitDate = document.getElementById("cj-visit-date").value;
+
+    if (!projectId || !description || !contractorId) {
+      showToast(T.errorPrefix + "กรุณากรอกข้อมูลที่จำเป็นให้ครบ");
+      return;
+    }
+    const btn = document.getElementById("save-contractor-job-btn");
+    btn.disabled = true;
+    try {
+      const { id } = await addContractorJob({
+        type,
+        projectId,
+        project,
+        siteName,
+        description,
+        images: cjImages,
+        contractorId,
+        contractorName,
+        siteVisitDate: type === CONTRACTOR_JOB_TYPE.FIX ? siteVisitDate : "",
+        updatedBy: currentIdentity?.name || "",
+      });
+      document.getElementById("contractor-job-modal").style.display = "none";
+      const link = `${window.location.origin}${window.location.pathname.replace(/admin\.html$/, "")}contractor.html?job=${id}`;
+      document.getElementById("contractor-link-output").value = link;
+      document.getElementById("contractor-link-modal").style.display = "flex";
+    } catch (e) {
+      console.error(e);
+      showToast(T.errorPrefix + e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  document.getElementById("close-contractor-link-modal").addEventListener("click", () => {
+    document.getElementById("contractor-link-modal").style.display = "none";
+  });
+  document.getElementById("copy-contractor-link-btn").addEventListener("click", async () => {
+    const input = document.getElementById("contractor-link-output");
+    input.select();
+    try {
+      await navigator.clipboard.writeText(input.value);
+    } catch {
+      document.execCommand("copy");
+    }
+    showToast(T.linkCopiedMsg);
+  });
+
+  // ---------------- ตารางงานผู้รับเหมา (real-time) ----------------
+  let contractorJobs = [];
+  watchAllContractorJobs(
+    (list) => {
+      contractorJobs = list;
+      renderContractorJobsTable();
+    },
+    () => showToast(T.msgConnectFailCheckInternet)
+  );
+
+  function renderContractorJobsTable() {
+    const tbody = document.getElementById("contractor-jobs-tbody");
+    const emptyState = document.getElementById("empty-contractor-jobs-state");
+    if (!contractorJobs.length) {
+      tbody.innerHTML = "";
+      emptyState.innerHTML = `<div class="hint" style="padding:16px; text-align:center;">No contractor jobs yet / ยังไม่มีงานที่ส่งให้ผู้รับเหมา / 暂无承包商工程</div>`;
+      return;
+    }
+    emptyState.innerHTML = "";
+    tbody.innerHTML = contractorJobs
+      .map((j) => {
+        const style = CONTRACTOR_JOB_STATUS_STYLE[j.status] || CONTRACTOR_JOB_STATUS_STYLE["รอผู้รับเหมาตอบรับ"];
+        let detail = escapeHtmlGlobal(j.description || "").slice(0, 60);
+        if (j.status === "ผู้รับเหมารับงานแล้ว") {
+          detail = j.type === CONTRACTOR_JOB_TYPE.FIX
+            ? `📅 ${formatDateThai(j.siteVisitDate)} · ${j.repairDays ?? "-"} วัน`
+            : `${j.quoteDays ?? "-"} วัน · ฿${Number(j.quotePrice || 0).toLocaleString("th-TH")}`;
+        }
+        const link = `${window.location.origin}${window.location.pathname.replace(/admin\.html$/, "")}contractor.html?job=${j.id}`;
+        return `
+        <tr>
+          <td>${escapeHtmlGlobal(j.jobId || "")}</td>
+          <td>${jobTypeTri(j.type)}</td>
+          <td>${escapeHtmlGlobal(j.project || "")}</td>
+          <td>${escapeHtmlGlobal(j.contractorName || "")}</td>
+          <td style="max-width:220px;">${detail}</td>
+          <td><span class="cat-badge" style="background:${style.bg}; color:${style.text};"><span class="dot" style="background:${style.dot};"></span>${contractorJobStatusTri(j.status)}</span></td>
+          <td><button class="btn btn-outline btn-sm cj-copy-link-btn" data-link="${escapeHtmlGlobal(link)}">📋</button></td>
+        </tr>`;
+      })
+      .join("");
+    tbody.querySelectorAll(".cj-copy-link-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(btn.dataset.link);
+        } catch {}
+        showToast(T.linkCopiedMsg);
+      });
+    });
+  }
 
   // ---------------- DASHBOARD DATA ----------------
   function startDashboard() {

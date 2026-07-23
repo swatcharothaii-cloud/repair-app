@@ -108,6 +108,59 @@
     </div>
   </details>
 
+  <details class="chart-card" id="contractor-manager">
+    <summary style="cursor:pointer; font-weight:600; font-size:15px;">👷 Manage Contractors / จัดการรายชื่อผู้รับเหมา / 管理承包商名单</summary>
+    <div style="margin-top:16px;">
+      <form id="contractor-add-form" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:16px;">
+        <div class="field" style="flex:1; min-width:160px; margin-bottom:0;">
+          <label>Contractor Name * / ชื่อผู้รับเหมา * / 承包商名称 *</label>
+          <input type="text" id="ctr-name" placeholder="e.g. ร้านช่างสมชาย" required>
+        </div>
+        <div class="field" style="flex:1; min-width:160px; margin-bottom:0;">
+          <label>LINE contact / ช่องทางไลน์ / LINE 联系方式</label>
+          <input type="text" id="ctr-line" placeholder="LINE ID / display name">
+        </div>
+        <div class="field" style="flex:0 0 140px; margin-bottom:0;">
+          <label>Phone / เบอร์โทร / 电话</label>
+          <input type="text" id="ctr-phone" placeholder="08x-xxx-xxxx">
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm" style="flex:0 0 auto;">+ Add / เพิ่ม / 添加</button>
+      </form>
+      <div id="contractor-manage-list"></div>
+      <p class="hint" style="margin-top:12px;">
+        Note: LINE contact is for your own reference only — this system does not send LINE messages automatically. Copy the job link and paste it into LINE chat yourself. /
+        หมายเหตุ: ช่องทางไลน์เป็นข้อมูลอ้างอิงสำหรับแอดมินเท่านั้น ระบบนี้ไม่ได้ส่งข้อความไลน์ให้อัตโนมัติ ต้องคัดลอกลิงก์งานไปวางในแชทไลน์ด้วยตัวเอง /
+        注意：LINE 联系方式仅供管理员参考，本系统不会自动发送 LINE 消息，请自行复制工程链接并粘贴到 LINE 聊天中
+      </p>
+    </div>
+  </details>
+
+  <details class="chart-card" id="contractor-jobs-panel" open>
+    <summary style="cursor:pointer; font-weight:600; font-size:15px;">🚚 Contractor Jobs / งานที่ส่งให้ผู้รับเหมา / 承包商工程</summary>
+    <div style="margin-top:16px;">
+      <div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
+        <button class="btn btn-primary btn-sm" id="add-contractor-job-btn">+ Send job to contractor / ส่งงานให้ผู้รับเหมา / 发送工程给承包商</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Job No. / เลขที่งาน / 单号</th>
+              <th>Type / ประเภท / 类型</th>
+              <th>Project / โปรเจกต์ / 项目</th>
+              <th>Contractor / ผู้รับเหมา / 承包商</th>
+              <th>Details / รายละเอียด / 详情</th>
+              <th>Status / สถานะ / 状态</th>
+              <th style="width:110px;">Link / ลิงก์ / 链接</th>
+            </tr>
+          </thead>
+          <tbody id="contractor-jobs-tbody"></tbody>
+        </table>
+      </div>
+      <div id="empty-contractor-jobs-state"></div>
+    </div>
+  </details>
+
   <div class="filter-bar">
     <select id="filter-status">
       <option value="">All Statuses / สถานะทั้งหมด / 全部状态</option>
@@ -208,6 +261,76 @@
 
     <button class="btn btn-primary" id="save-detail-btn">Save Changes / บันทึกการแก้ไข / 保存修改</button>
     <button class="btn btn-outline btn-block" style="margin-top:10px;" id="cancel-detail-btn">Cancel / ยกเลิก / 取消</button>
+  </div>
+</div>
+
+<!-- ============ SEND JOB TO CONTRACTOR MODAL ============ -->
+<div class="modal-overlay" id="contractor-job-modal" style="display:none;">
+  <div class="modal-sheet">
+    <div class="modal-header">
+      <h3>Send Job to Contractor / ส่งงานให้ผู้รับเหมา / 发送工程给承包商</h3>
+      <button class="icon-btn" id="close-contractor-job-modal">✕</button>
+    </div>
+
+    <div class="field">
+      <label>Job Type * / ประเภทงาน * / 工程类型 *</label>
+      <select id="cj-type">
+        <option value="fix">Fix / repair work / งานแก้ไข / 维修工程</option>
+        <option value="quote">New work (quote needed) / งานใหม่ที่ต้องเสนอราคา / 新工程（需报价）</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label>Project * / โปรเจกต์ * / 项目 *</label>
+      <select id="cj-project" required></select>
+    </div>
+
+    <div class="field">
+      <label>Site Name / ชื่อสถานที่ / 地点名称</label>
+      <input type="text" id="cj-site" placeholder="e.g. Room 301, Building A">
+    </div>
+
+    <div class="field">
+      <label>Job Description * / รายละเอียดงาน * / 工程详情 *</label>
+      <textarea id="cj-description" rows="3" required></textarea>
+    </div>
+
+    <div class="field">
+      <label>Contractor * / ผู้รับเหมา * / 承包商 *</label>
+      <select id="cj-contractor" required></select>
+    </div>
+
+    <div class="field" id="cj-visit-date-field">
+      <label>Proposed site visit date (optional) / วันที่เสนอเข้าหน้างาน (ไม่บังคับ) / 建议现场勘查日期（可选）</label>
+      <input type="date" id="cj-visit-date">
+      <p class="hint">The contractor can confirm or change this via their link. / ผู้รับเหมาสามารถยืนยันหรือแก้ไขวันที่ผ่านลิงก์ได้อีกครั้ง / 承包商可通过链接确认或更改</p>
+    </div>
+
+    <div class="field">
+      <label>Reference photos / รูปภาพประกอบ / 参考照片</label>
+      <input type="file" id="cj-images" accept="image/*" multiple>
+      <div id="cj-image-previews" style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;"></div>
+    </div>
+
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
+      <button class="btn btn-outline" id="cancel-contractor-job-btn">Cancel / ยกเลิก / 取消</button>
+      <button class="btn btn-primary" id="save-contractor-job-btn">Create & Get Link / สร้างและรับลิงก์ / 创建并获取链接</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CONTRACTOR JOB LINK RESULT MODAL ============ -->
+<div class="modal-overlay" id="contractor-link-modal" style="display:none;">
+  <div class="modal-sheet" style="max-width:480px;">
+    <div class="modal-header">
+      <h3>✅ Job Created / สร้างงานแล้ว / 工程已创建</h3>
+      <button class="icon-btn" id="close-contractor-link-modal">✕</button>
+    </div>
+    <p class="hint">Copy this link and paste it into LINE chat with the contractor / คัดลอกลิงก์นี้ไปวางในแชทไลน์กับผู้รับเหมา / 复制此链接并粘贴到与承包商的 LINE 聊天中</p>
+    <div class="field">
+      <input type="text" id="contractor-link-output" readonly style="font-size:13px;">
+    </div>
+    <button class="btn btn-primary btn-block" id="copy-contractor-link-btn">📋 Copy link / คัดลอกลิงก์ / 复制链接</button>
   </div>
 </div>
 
