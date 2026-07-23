@@ -576,24 +576,32 @@ tbody tr:hover { background: #eff6ff; }
 #print-report { display: none; }
 
 .print-report-header {
-  display: flex; align-items: center; gap: 14px; margin-bottom: 14px;
-  padding-bottom: 12px; border-bottom: 2px solid #1f2937;
+  display: flex; align-items: center; gap: 18px; margin-bottom: 18px;
+  padding-bottom: 14px; border-bottom: 3px solid #1f2937;
 }
-.print-report-header img { height: 42px; }
-.print-report-header .titles h1 { margin: 0; font-size: 18px; }
-.print-report-header .titles .sub { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
-.print-report-meta { font-size: 11.5px; color: var(--text-muted); margin-bottom: 14px; line-height: 1.5; }
-.print-report-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.print-report-header img { height: 56px; }
+.print-report-header .titles h1 { margin: 0; font-size: 26px; }
+.print-report-header .titles .sub { font-size: 15px; color: var(--text-muted); margin-top: 3px; }
+.print-report-meta {
+  font-size: 14px; color: var(--text); margin-bottom: 18px; line-height: 1.7;
+  background: #f8fafc; border-radius: 10px; padding: 10px 14px;
+}
+.print-report-table { width: 100%; border-collapse: collapse; font-size: 15px; line-height: 1.5; }
 .print-report-table th, .print-report-table td {
-  border: 1px solid #cbd5e1; padding: 6px 7px; text-align: left; vertical-align: top;
+  border: 1px solid #cbd5e1; padding: 12px 14px; text-align: left; vertical-align: top;
 }
-.print-report-table th { background: #f1f5f9; font-weight: 600; }
-.print-report-table img.print-thumb { width: 46px; height: 46px; object-fit: cover; border-radius: 6px; display: block; }
-.print-report-table .no-photo { width: 46px; height: 46px; display:flex; align-items:center; justify-content:center; font-size: 10px; color: #9ca3af; background:#f1f5f9; border-radius:6px; }
+.print-report-table th { background: #1f2937; color: #fff; font-weight: 600; font-size: 14.5px; }
+.print-report-table tbody tr:nth-child(even) { background: #f8fafc; }
+.print-report-table td.desc-cell { min-width: 220px; }
+.print-report-table img.print-thumb { width: 130px; height: 130px; object-fit: cover; border-radius: 10px; display: block; }
+.print-report-table .no-photo {
+  width: 130px; height: 130px; display:flex; align-items:center; justify-content:center;
+  font-size: 13px; color: #9ca3af; background:#f1f5f9; border-radius:10px;
+}
 .print-report-table tr { break-inside: avoid; }
 
 @media print {
-  @page { size: A4 landscape; margin: 10mm; }
+  @page { size: A4 landscape; margin: 8mm; }
   body * { visibility: hidden; }
   #print-report, #print-report * { visibility: visible; }
   #print-report {

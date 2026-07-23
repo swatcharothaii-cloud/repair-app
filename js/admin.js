@@ -645,7 +645,7 @@ async function main() {
             <td>${escapeHtml(r.siteName || "-")}</td>
             <td>${r.category ? escapeHtml(catTri(r.category)) : "-"}</td>
             <td>${escapeHtml(r.reporterName || "-")}</td>
-            <td>${escapeHtml(r.description || "-")}</td>
+            <td class="desc-cell">${escapeHtml(r.description || "-")}</td>
             <td>${formatDateThai(r.dueDate)}${overdue ? " ⚠️" : ""}</td>
             <td>${r.status ? escapeHtml(statusTri(r.status)) : "-"}</td>
           </tr>`;
