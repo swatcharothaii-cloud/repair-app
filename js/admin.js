@@ -447,6 +447,37 @@ async function main() {
     console.warn("โหลดรายชื่อผู้รับเหมาไม่สำเร็จ", e);
   }
 
+  // หมวดหมู่ผู้รับเหมา ใช้ชุดข้อมูล "ประเภทงาน" (categories) เดียวกับที่ใช้ในใบแจ้งซ่อมเลย
+  // เพื่อให้จัดหมวดผู้รับเหมาตามประเภทงานที่ถนัดได้ โดยไม่ต้องดูแลรายการซ้ำซ้อนอีกชุด
+  function renderContractorCategoryCheckboxes(selectedIds) {
+    const wrap = document.getElementById("ctr-categories");
+    const selected = new Set(selectedIds || []);
+    const sorted = [...categories]
+      .filter((c) => c.active !== false)
+      .sort((a, b) => (a.order ?? 999) - (b.order ?? 999) || (a.label || "").localeCompare(b.label || "", "th"));
+    wrap.innerHTML = sorted
+      .map(
+        (c) => `
+        <label style="display:flex; align-items:center; gap:4px; font-weight:400; font-size:13px; cursor:pointer;">
+          <input type="checkbox" class="ctr-cat-checkbox" value="${c.id}" ${selected.has(c.id) ? "checked" : ""}>
+          ${c.icon || "🔧"} ${escapeHtmlGlobal(c.label)}
+        </label>`
+      )
+      .join("");
+  }
+  renderContractorCategoryCheckboxes([]);
+
+  function categoryBadgesHtml(categoryIds) {
+    if (!categoryIds || !categoryIds.length) return `<span class="hint">-</span>`;
+    return categoryIds
+      .map((id) => categories.find((c) => c.id === id))
+      .filter(Boolean)
+      .map(
+        (c) => `<span class="cat-badge" style="background:${c.color}22; color:${c.color}; font-size:11px;">${c.icon || ""} ${escapeHtmlGlobal(c.label)}</span>`
+      )
+      .join(" ");
+  }
+
   function renderContractorManageList() {
     const listEl = document.getElementById("contractor-manage-list");
     if (!contractors.length) {
@@ -460,6 +491,7 @@ async function main() {
           <strong style="flex:1; min-width:120px;">${escapeHtmlGlobal(c.name)}</strong>
           <span class="hint" style="flex:1; min-width:120px;">${escapeHtmlGlobal(c.lineContact || "-")}</span>
           <span class="hint" style="flex:0 0 auto;">${escapeHtmlGlobal(c.phone || "-")}</span>
+          <span style="flex:1 1 100%; display:flex; gap:6px; flex-wrap:wrap;">${categoryBadgesHtml(c.categories)}</span>
         </div>`
       )
       .join("");
@@ -472,18 +504,20 @@ async function main() {
     const lineInput = document.getElementById("ctr-line");
     const phoneInput = document.getElementById("ctr-phone");
     const name = nameInput.value.trim();
+    const selectedCategories = Array.from(document.querySelectorAll(".ctr-cat-checkbox:checked")).map((cb) => cb.value);
     if (!name) {
       showToast(T.errorPrefix + "กรุณาระบุชื่อผู้รับเหมา");
       return;
     }
     try {
-      const newId = await addContractor({ name, lineContact: lineInput.value, phone: phoneInput.value });
-      contractors.push({ id: newId, name, lineContact: lineInput.value.trim(), phone: phoneInput.value.trim(), active: true });
+      const newId = await addContractor({ name, lineContact: lineInput.value, phone: phoneInput.value, categories: selectedCategories });
+      contractors.push({ id: newId, name, lineContact: lineInput.value.trim(), phone: phoneInput.value.trim(), categories: selectedCategories, active: true });
       renderContractorManageList();
       refreshContractorSelect();
       nameInput.value = "";
       lineInput.value = "";
       phoneInput.value = "";
+      renderContractorCategoryCheckboxes([]);
       showToast(T.msgCategorySaved);
     } catch (err) {
       console.error(err);
@@ -491,10 +525,17 @@ async function main() {
     }
   });
 
-  function refreshContractorSelect() {
+  function refreshContractorSelect(preferredCategoryId) {
     const sel = document.getElementById("cj-contractor");
-    sel.innerHTML = contractors
-      .filter((c) => c.active !== false)
+    const active = contractors.filter((c) => c.active !== false);
+    const sorted = preferredCategoryId
+      ? [...active].sort((a, b) => {
+          const aMatch = (a.categories || []).includes(preferredCategoryId) ? 0 : 1;
+          const bMatch = (b.categories || []).includes(preferredCategoryId) ? 0 : 1;
+          return aMatch - bMatch;
+        })
+      : active;
+    sel.innerHTML = sorted
       .map((c) => `<option value="${c.id}" data-name="${escapeHtmlGlobal(c.name)}">${escapeHtmlGlobal(c.name)}</option>`)
       .join("");
   }
@@ -510,6 +551,7 @@ async function main() {
 
   // ---------------- สร้างงานส่งให้ผู้รับเหมา ----------------
   let cjImages = [];
+  let cjSourceTicketId = ""; // ถ้าเปิดโมดัลนี้จาก "ส่งงานให้ผู้รับเหมา" ในรายละเอียดงานซ่อม จะมีเลขที่ตั๋วอ้างอิงมาด้วย
   function renderCjImagePreviews() {
     const el = document.getElementById("cj-image-previews");
     el.innerHTML = cjImages
@@ -562,6 +604,7 @@ async function main() {
     document.getElementById("cj-description").value = "";
     document.getElementById("cj-visit-date").value = "";
     cjImages = [];
+    cjSourceTicketId = "";
     renderCjImagePreviews();
     document.getElementById("contractor-job-modal").style.display = "flex";
   });
@@ -570,6 +613,39 @@ async function main() {
   });
   document.getElementById("cancel-contractor-job-btn").addEventListener("click", () => {
     document.getElementById("contractor-job-modal").style.display = "none";
+  });
+
+  // ---------------- ส่งงานซ่อมที่มีอยู่แล้ว (จากหน้ารายละเอียดงานซ่อม) ให้ผู้รับเหมา ----------------
+  document.getElementById("send-to-contractor-btn").addEventListener("click", () => {
+    const r = allRequests.find((x) => x.id === activeDetailId);
+    if (!r) return;
+    if (!contractors.length) {
+      showToast(T.errorPrefix + "กรุณาเพิ่มรายชื่อผู้รับเหมาก่อน (ดูหัวข้อ 👷 Manage Contractors ด้านบน)");
+      return;
+    }
+    detailModal.style.display = "none";
+
+    // เรียงรายชื่อผู้รับเหมาให้คนที่ถนัดประเภทงานตรงกับใบแจ้งซ่อมนี้ขึ้นก่อน (เลือกง่ายขึ้น)
+    refreshContractorSelect(r.categoryId);
+    refreshContractorJobProjectSelect();
+
+    document.getElementById("cj-type").value = CONTRACTOR_JOB_TYPE.FIX;
+    document.getElementById("cj-visit-date-field").style.display = "block";
+
+    const projSel = document.getElementById("cj-project");
+    if (r.projectId && Array.from(projSel.options).some((o) => o.value === r.projectId)) {
+      projSel.value = r.projectId;
+    }
+    document.getElementById("cj-site").value = r.siteName || "";
+    document.getElementById("cj-description").value = r.description || "";
+    document.getElementById("cj-visit-date").value = "";
+
+    // แนบรูปภาพก่อนซ่อมของงานนี้ไปให้ผู้รับเหมาดูประกอบด้วยเลย (แก้ไข/ลบออกได้ก่อนกดส่ง)
+    cjImages = (r.images || []).slice(0, MAX_IMAGES).map((img) => ({ url: img.url }));
+    renderCjImagePreviews();
+    cjSourceTicketId = r.ticketId || r.id || "";
+
+    document.getElementById("contractor-job-modal").style.display = "flex";
   });
 
   document.getElementById("save-contractor-job-btn").addEventListener("click", async () => {
@@ -593,6 +669,7 @@ async function main() {
     try {
       const { id } = await addContractorJob({
         type,
+        ticketId: cjSourceTicketId,
         projectId,
         project,
         siteName,
@@ -604,6 +681,7 @@ async function main() {
         updatedBy: currentIdentity?.name || "",
       });
       document.getElementById("contractor-job-modal").style.display = "none";
+      cjSourceTicketId = "";
       const link = `${window.location.origin}${window.location.pathname.replace(/admin\.html$/, "")}contractor.html?job=${id}`;
       document.getElementById("contractor-link-output").value = link;
       document.getElementById("contractor-link-modal").style.display = "flex";
@@ -660,7 +738,7 @@ async function main() {
         const link = `${window.location.origin}${window.location.pathname.replace(/admin\.html$/, "")}contractor.html?job=${j.id}`;
         return `
         <tr>
-          <td>${escapeHtmlGlobal(j.jobId || "")}</td>
+          <td>${escapeHtmlGlobal(j.jobId || "")}${j.ticketId ? `<div class="hint" style="margin-top:2px;">🔗 #${escapeHtmlGlobal(j.ticketId)}</div>` : ""}</td>
           <td>${jobTypeTri(j.type)}</td>
           <td>${escapeHtmlGlobal(j.project || "")}</td>
           <td>${escapeHtmlGlobal(j.contractorName || "")}</td>

@@ -124,6 +124,10 @@
           <label>Phone / เบอร์โทร / 电话</label>
           <input type="text" id="ctr-phone" placeholder="08x-xxx-xxxx">
         </div>
+        <div class="field" style="flex:1 1 100%; margin-bottom:0;">
+          <label>Specialties / ประเภทงานที่ถนัด / 擅长工程类别</label>
+          <div id="ctr-categories" style="display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:6px;"></div>
+        </div>
         <button type="submit" class="btn btn-primary btn-sm" style="flex:0 0 auto;">+ Add / เพิ่ม / 添加</button>
       </form>
       <div id="contractor-manage-list"></div>
@@ -258,6 +262,8 @@
     </div>
 
     <div class="hint" id="d-meta" style="margin-bottom:14px;"></div>
+
+    <button class="btn btn-outline btn-block" id="send-to-contractor-btn" style="margin-bottom:10px;">🚚 Send Job to Contractor / ส่งงานให้ผู้รับเหมา / 发送工程给承包商</button>
 
     <button class="btn btn-primary" id="save-detail-btn">Save Changes / บันทึกการแก้ไข / 保存修改</button>
     <button class="btn btn-outline btn-block" style="margin-top:10px;" id="cancel-detail-btn">Cancel / ยกเลิก / 取消</button>

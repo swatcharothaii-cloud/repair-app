@@ -12,7 +12,7 @@ export async function loadContractors() {
 
 // เพิ่มผู้รับเหมาใหม่ — lineContact เป็นแค่ข้อมูลอ้างอิงให้แอดมินเอาไปหาแชทไลน์เอง
 // (ระบบนี้ไม่ได้ส่งข้อความไลน์อัตโนมัติ แอดมินต้องคัดลอกลิงก์งานไปวางในแชทไลน์เอง)
-export async function addContractor({ name, lineContact, phone, note }) {
+export async function addContractor({ name, lineContact, phone, note, categories }) {
   const trimmedName = (name || "").trim();
   if (!trimmedName) throw new Error("กรุณาระบุชื่อผู้รับเหมา");
   const ref = await addDoc(collection(db, CONTRACTORS_COLLECTION), {
@@ -20,6 +20,9 @@ export async function addContractor({ name, lineContact, phone, note }) {
     lineContact: (lineContact || "").trim(),
     phone: (phone || "").trim(),
     note: (note || "").trim(),
+    // หมวดหมู่ประเภทงานที่ผู้รับเหมารายนี้ถนัด — อ้างอิง id เดียวกับ collection "categories"
+    // (ประเภทงานแจ้งซ่อม) เพื่อให้ใช้ชุดข้อมูลเดียวกันทั้งระบบ ไม่ต้องดูแลสองชุดซ้ำซ้อน
+    categories: Array.isArray(categories) ? categories : [],
     active: true,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
