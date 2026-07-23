@@ -55,6 +55,33 @@ export async function updateContractorJob(id, patch) {
   await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), { ...patch, updatedAt: serverTimestamp() });
 }
 
+// ---------------- ลิงก์อนุมัติสำหรับผู้บริหาร (ไม่ต้องล็อกอิน) ----------------
+// แอดมินกดสร้างลิงก์ทีละงาน (ปกติหลังผู้รับเหมาตอบรับ/เสนอราคาแล้ว) ให้ผู้บริหารกดอนุมัติ/ปฏิเสธเองผ่านลิงก์
+export async function sendJobForApproval(id) {
+  await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), {
+    approvalStatus: "pending",
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function approveJobPublic(id, approverName) {
+  await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), {
+    approvalStatus: "approved",
+    approvedBy: (approverName || "").trim(),
+    approvalRespondedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function rejectJobPublic(id, approverName) {
+  await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), {
+    approvalStatus: "rejected",
+    approvedBy: (approverName || "").trim(),
+    approvalRespondedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
 // ---------------- เรียกจากหน้าผู้รับเหมา (contractor.html, ไม่ต้องล็อกอิน) ----------------
 
 // งานประเภท "งานแก้ไข" — ผู้รับเหมายืนยัน/ระบุวันเข้าหน้างาน + จำนวนวันซ่อม

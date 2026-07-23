@@ -438,6 +438,7 @@ async function main() {
   const {
     addContractorJob,
     watchAllContractorJobs,
+    sendJobForApproval,
   } = await import("./contractor-jobs.js");
 
   let contractors = [];
@@ -736,6 +737,14 @@ async function main() {
             : `${j.quoteDays ?? "-"} วัน · ฿${Number(j.quotePrice || 0).toLocaleString("th-TH")}`;
         }
         const link = `${window.location.origin}${window.location.pathname.replace(/admin\.html$/, "")}contractor.html?job=${j.id}`;
+        const approvalStyle = {
+          pending: { bg: "#dbeafe", text: "#1e40af", label: "⏳ Awaiting approval / รออนุมัติ / 待批准" },
+          approved: { bg: "#d1fae5", text: "#065f46", label: "✅ Approved / อนุมัติแล้ว / 已批准" },
+          rejected: { bg: "#fee2e2", text: "#991b1b", label: "❌ Rejected / ปฏิเสธ / 已拒绝" },
+        }[j.approvalStatus];
+        const approvalBadge = approvalStyle
+          ? `<div class="cat-badge" style="background:${approvalStyle.bg}; color:${approvalStyle.text}; font-size:10px; margin-top:4px;">${approvalStyle.label}</div>`
+          : "";
         return `
         <tr>
           <td>${escapeHtmlGlobal(j.jobId || "")}${j.ticketId ? `<div class="hint" style="margin-top:2px;">🔗 #${escapeHtmlGlobal(j.ticketId)}</div>` : ""}</td>
@@ -743,8 +752,11 @@ async function main() {
           <td>${escapeHtmlGlobal(j.project || "")}</td>
           <td>${escapeHtmlGlobal(j.contractorName || "")}</td>
           <td style="max-width:220px;">${detail}</td>
-          <td><span class="cat-badge" style="background:${style.bg}; color:${style.text};"><span class="dot" style="background:${style.dot};"></span>${contractorJobStatusTri(j.status)}</span></td>
-          <td><button class="btn btn-outline btn-sm cj-copy-link-btn" data-link="${escapeHtmlGlobal(link)}">📋</button></td>
+          <td><span class="cat-badge" style="background:${style.bg}; color:${style.text};"><span class="dot" style="background:${style.dot};"></span>${contractorJobStatusTri(j.status)}</span>${approvalBadge}</td>
+          <td>
+            <button class="btn btn-outline btn-sm cj-copy-link-btn" data-link="${escapeHtmlGlobal(link)}" title="Copy job link / คัดลอกลิงก์งาน / 复制工程链接">📋</button>
+            <button class="btn btn-outline btn-sm cj-send-approval-btn" data-id="${j.id}" title="Send approval link to management / ส่งลิงก์อนุมัติให้ผู้บริหาร / 发送审批链接给管理层">🔗</button>
+          </td>
         </tr>`;
       })
       .join("");
@@ -756,7 +768,35 @@ async function main() {
         showToast(T.linkCopiedMsg);
       });
     });
+    tbody.querySelectorAll(".cj-send-approval-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.id;
+        try {
+          await sendJobForApproval(id);
+          const approvalLink = `${window.location.origin}${window.location.pathname.replace(/admin\.html$/, "")}approve.html?job=${id}`;
+          document.getElementById("job-approval-link-output").value = approvalLink;
+          document.getElementById("job-approval-link-modal").style.display = "flex";
+        } catch (e) {
+          console.error(e);
+          showToast(T.errorPrefix + e.message);
+        }
+      });
+    });
   }
+
+  document.getElementById("close-job-approval-link-modal").addEventListener("click", () => {
+    document.getElementById("job-approval-link-modal").style.display = "none";
+  });
+  document.getElementById("copy-job-approval-link-btn").addEventListener("click", async () => {
+    const input = document.getElementById("job-approval-link-output");
+    input.select();
+    try {
+      await navigator.clipboard.writeText(input.value);
+    } catch {
+      document.execCommand("copy");
+    }
+    showToast(T.linkCopiedMsg);
+  });
 
   // ---------------- DASHBOARD DATA ----------------
   function startDashboard() {

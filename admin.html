@@ -155,7 +155,7 @@
               <th>Contractor / ผู้รับเหมา / 承包商</th>
               <th>Details / รายละเอียด / 详情</th>
               <th>Status / สถานะ / 状态</th>
-              <th style="width:110px;">Link / ลิงก์ / 链接</th>
+              <th style="width:150px;">Links / ลิงก์ / 链接</th>
             </tr>
           </thead>
           <tbody id="contractor-jobs-tbody"></tbody>
@@ -337,6 +337,21 @@
       <input type="text" id="contractor-link-output" readonly style="font-size:13px;">
     </div>
     <button class="btn btn-primary btn-block" id="copy-contractor-link-btn">📋 Copy link / คัดลอกลิงก์ / 复制链接</button>
+  </div>
+</div>
+
+<!-- ============ APPROVAL LINK MODAL (ส่งให้ผู้บริหารอนุมัติ/ปฏิเสธ) ============ -->
+<div class="modal-overlay" id="job-approval-link-modal" style="display:none;">
+  <div class="modal-sheet" style="max-width:480px;">
+    <div class="modal-header">
+      <h3>🔗 Approval Link / ลิงก์อนุมัติ / 审批链接</h3>
+      <button class="icon-btn" id="close-job-approval-link-modal">✕</button>
+    </div>
+    <p class="hint">Copy this link and send it to management via LINE — they can approve/reject without logging in / คัดลอกลิงก์นี้ส่งให้ผู้บริหารทางไลน์ — กดอนุมัติ/ปฏิเสธได้เลยโดยไม่ต้องล็อกอิน / 复制此链接发送给管理层，无需登录即可批准/拒绝</p>
+    <div class="field">
+      <input type="text" id="job-approval-link-output" readonly style="font-size:13px;">
+    </div>
+    <button class="btn btn-primary btn-block" id="copy-job-approval-link-btn">📋 Copy link / คัดลอกลิงก์ / 复制链接</button>
   </div>
 </div>
 
