@@ -18,12 +18,12 @@ export const FIREBASE_CONFIG = {
 
 // 3) LINE LIFF ID (LINE Developers Console > สร้าง LIFF app)
 //    ถ้าต้องการรันเป็นเว็บแอปทั่วไป (ไม่ผ่าน LINE) ให้เว้นว่างไว้เป็น ""
-export const LIFF_ID = "2008016337-VfP6OJEJ"; // ใช้กับหน้าแจ้งซ่อม (index.html)
+export const LIFF_ID = "2010637585-n7YV0iHr"; // "ระบบแจ้งซ่อมออนไลน์" — ใช้กับหน้าแจ้งซ่อม (index.html)
 
 // 3.1) LIFF ID สำหรับหน้าแอดมิน (LIFF app คนละตัวกับข้างบน เพราะ Endpoint URL ต่างกัน)
 //      ให้ทีมงานเปิดหน้าแอดมินผ่านแอป LINE ได้เหมือนกัน แต่ยังต้องล็อกอินด้วยอีเมล/รหัสผ่านตามปกติ
 //      (LINE เป็นแค่ช่องทางเข้าถึง ไม่ได้แทนที่ระบบสิทธิ์แอดมิน) ถ้าไม่ต้องการ เว้นว่างไว้เป็น ""
-export const LIFF_ID_ADMIN = "2008016337-sOlC5gDe";
+export const LIFF_ID_ADMIN = "2010637585-1P4sBTLt"; // "ระบบแจ้งซ่อม admin"
 
 // 4) ข้อมูลบริษัท — แสดงที่หัว/ท้ายหน้าเว็บ แก้ไขได้ตามต้องการ
 //    เปลี่ยนโลโก้ได้โดยแทนที่ไฟล์ assets/logo.svg (หรือเปลี่ยน path ด้านล่างเป็นไฟล์อื่น เช่น .png)
@@ -107,13 +107,21 @@ export const MAX_IMAGE_MB = 8; // ขนาดไฟล์ต้นฉบับ�
 //  ระบบส่งงานให้ผู้รับเหมา (Contractor Jobs) — เฟส 1
 // ============================================================
 export const CONTRACTOR_JOB_TYPE = {
-  FIX: "fix", // งานแก้ไข — ระบุวันเข้าหน้างาน + จำนวนวันซ่อม
+  FIX: "fix", // งานแก้ไข — รับ/ปฏิเสธงาน แล้วยืนยันวันเข้าหน้างาน + จำนวนวันซ่อม
   QUOTE: "quote", // งานใหม่ที่ต้องเสนอราคา — รับ/ปฏิเสธงาน แล้วเสนอวัน+ราคา
+  DEFECT: "defect", // งานแก้ไขที่ตรวจไม่ผ่าน (Defect/re-work) — เหมือน "fix" แต่มีเลขรอบที่ตรวจไม่ผ่านกำกับไว้
+};
+
+// สี/ไอคอนประจำ "ประเภทงาน" — ใช้แยกให้เห็นชัดตาแวบเดียวว่างานไหนเป็นแบบไหน
+export const CONTRACTOR_JOB_TYPE_STYLE = {
+  [CONTRACTOR_JOB_TYPE.FIX]: { bg: "#dbeafe", text: "#1e40af", border: "#93c5fd", icon: "🔧" },
+  [CONTRACTOR_JOB_TYPE.QUOTE]: { bg: "#d1fae5", text: "#065f46", border: "#6ee7b7", icon: "💰" },
+  [CONTRACTOR_JOB_TYPE.DEFECT]: { bg: "#fee2e2", text: "#991b1b", border: "#fca5a5", icon: "⚠️" },
 };
 
 export const CONTRACTOR_JOB_STATUS = {
   WAITING: "รอผู้รับเหมาตอบรับ",
-  CONFIRMED: "ผู้รับเหมารับงานแล้ว", // fix: ยืนยันวันเข้าหน้างานแล้ว / quote: กดรับงาน+เสนอราคาแล้ว
+  CONFIRMED: "ผู้รับเหมารับงานแล้ว", // fix/defect: ยืนยันวันเข้าหน้างานแล้ว / quote: กดรับงาน+เสนอราคาแล้ว
   REJECTED: "ผู้รับเหมาปฏิเสธ",
   DONE: "เสร็จสิ้น",
 };

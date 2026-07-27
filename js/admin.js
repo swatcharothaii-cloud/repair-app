@@ -1,6 +1,6 @@
 import {
   DEPARTMENTS, STATUS, STATUS_STYLE, LIFF_ID_ADMIN, ADMINS, COMPANY, MAX_IMAGES, MAX_IMAGE_MB,
-  CONTRACTOR_JOB_TYPE, CONTRACTOR_JOB_STATUS_STYLE,
+  CONTRACTOR_JOB_TYPE, CONTRACTOR_JOB_STATUS, CONTRACTOR_JOB_STATUS_STYLE, CONTRACTOR_JOB_TYPE_STYLE,
 } from "./config.js";
 import { showToast, formatDateThai, isOverdue, renderCompanyBrandBar } from "./utils.js";
 import { compressImageToDataUrl } from "./image-compress.js";
@@ -82,7 +82,7 @@ async function main() {
   // โหลด firebase-init.js แบบ dynamic import เพื่อดักจับข้อผิดพลาดกรณีเชื่อมต่อ Firebase ไม่สำเร็จ
   const {
     db,
-    collection, doc, updateDoc, onSnapshot, query, orderBy, serverTimestamp,
+    collection, doc, updateDoc, deleteDoc, onSnapshot, query, orderBy, serverTimestamp,
   } = await import("./firebase-init.js");
   const { loadCategories, addCategory, updateCategory } = await import("./categories.js");
   const { loadProjects, addProject, updateProject } = await import("./projects.js");
@@ -434,11 +434,14 @@ async function main() {
   // ============================================================
   //  ระบบส่งงานให้ผู้รับเหมา (Contractor Jobs) — เฟส 1
   // ============================================================
-  const { loadContractors, addContractor } = await import("./contractors.js");
+  const { loadContractors, addContractor, updateContractor, deleteContractor } = await import("./contractors.js");
   const {
     addContractorJob,
     watchAllContractorJobs,
     sendJobForApproval,
+    deleteContractorJob,
+    setPoNumber,
+    acceptDelivery,
   } = await import("./contractor-jobs.js");
 
   let contractors = [];
@@ -450,35 +453,28 @@ async function main() {
 
   // หมวดหมู่ผู้รับเหมา ใช้ชุดข้อมูล "ประเภทงาน" (categories) เดียวกับที่ใช้ในใบแจ้งซ่อมเลย
   // เพื่อให้จัดหมวดผู้รับเหมาตามประเภทงานที่ถนัดได้ โดยไม่ต้องดูแลรายการซ้ำซ้อนอีกชุด
-  function renderContractorCategoryCheckboxes(selectedIds) {
-    const wrap = document.getElementById("ctr-categories");
+  function contractorCategoryCheckboxesHtml(checkboxClass, selectedIds) {
     const selected = new Set(selectedIds || []);
     const sorted = [...categories]
       .filter((c) => c.active !== false)
       .sort((a, b) => (a.order ?? 999) - (b.order ?? 999) || (a.label || "").localeCompare(b.label || "", "th"));
-    wrap.innerHTML = sorted
+    return sorted
       .map(
         (c) => `
-        <label style="display:flex; align-items:center; gap:4px; font-weight:400; font-size:13px; cursor:pointer;">
-          <input type="checkbox" class="ctr-cat-checkbox" value="${c.id}" ${selected.has(c.id) ? "checked" : ""}>
+        <label style="display:flex; align-items:center; gap:4px; font-weight:400; font-size:12px; cursor:pointer;">
+          <input type="checkbox" class="${checkboxClass}" value="${c.id}" ${selected.has(c.id) ? "checked" : ""}>
           ${c.icon || "🔧"} ${escapeHtmlGlobal(c.label)}
         </label>`
       )
       .join("");
   }
+  function renderContractorCategoryCheckboxes(selectedIds) {
+    document.getElementById("ctr-categories").innerHTML = contractorCategoryCheckboxesHtml("ctr-cat-checkbox", selectedIds);
+  }
   renderContractorCategoryCheckboxes([]);
 
-  function categoryBadgesHtml(categoryIds) {
-    if (!categoryIds || !categoryIds.length) return `<span class="hint">-</span>`;
-    return categoryIds
-      .map((id) => categories.find((c) => c.id === id))
-      .filter(Boolean)
-      .map(
-        (c) => `<span class="cat-badge" style="background:${c.color}22; color:${c.color}; font-size:11px;">${c.icon || ""} ${escapeHtmlGlobal(c.label)}</span>`
-      )
-      .join(" ");
-  }
-
+  // แก้ไข/ปิดใช้งานผู้รับเหมา — ไม่มีการ "ลบถาวร" เพราะกฎ Firestore ปิดการลบไว้กันข้อมูลหาย
+  // (งานเก่าที่เคยส่งให้ผู้รับเหมารายนี้จะยังอ้างอิงชื่อได้ปกติ) ใช้ "ปิดใช้งาน" แทนการลบ
   function renderContractorManageList() {
     const listEl = document.getElementById("contractor-manage-list");
     if (!contractors.length) {
@@ -488,16 +484,107 @@ async function main() {
     listEl.innerHTML = contractors
       .map(
         (c) => `
-        <div style="display:flex; align-items:center; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); flex-wrap:wrap;">
-          <strong style="flex:1; min-width:120px;">${escapeHtmlGlobal(c.name)}</strong>
-          <span class="hint" style="flex:1; min-width:120px;">${escapeHtmlGlobal(c.lineContact || "-")}</span>
-          <span class="hint" style="flex:0 0 auto;">${escapeHtmlGlobal(c.phone || "-")}</span>
-          <span style="flex:1 1 100%; display:flex; gap:6px; flex-wrap:wrap;">${categoryBadgesHtml(c.categories)}</span>
+        <div class="cat-manage-row ${c.active === false ? "cat-disabled" : ""}" data-ctr-id="${c.id}" style="flex-direction:column; align-items:stretch;">
+          <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+            <input type="text" class="cat-label-input proj-label-input" value="${escapeHtmlGlobal(c.name)}" data-field="name" placeholder="Contractor name / ชื่อผู้รับเหมา">
+            <input type="text" style="flex:1; min-width:140px; padding:8px 10px;" value="${escapeHtmlGlobal(c.lineContact || "")}" placeholder="LINE ID / display name" data-field="lineContact">
+            <input type="text" style="flex:0 0 130px; padding:8px 10px;" value="${escapeHtmlGlobal(c.phone || "")}" placeholder="08x-xxx-xxxx" data-field="phone">
+            ${c.active === false ? `<span class="badge" style="background:#fee2e2; color:#991b1b;">Disabled / ปิดใช้งาน / 已停用</span>` : ""}
+          </div>
+          <div style="display:flex; flex-wrap:wrap; gap:6px 14px; margin-top:8px;">
+            ${contractorCategoryCheckboxesHtml("ctr-row-cat-checkbox", c.categories)}
+          </div>
+          <div style="display:flex; gap:8px; margin-top:8px;">
+            <button type="button" class="btn btn-outline btn-sm" data-ctr-save="${c.id}">${T.btnCategorySave}</button>
+            <button type="button" class="btn ${c.active === false ? "btn-secondary" : "btn-outline"} btn-sm" data-ctr-toggle="${c.id}">
+              ${c.active === false ? "🔓 Enable / เปิดใช้งาน / 启用" : "🔒 Disable / ปิดใช้งาน / 停用"}
+            </button>
+            <button type="button" class="btn btn-sm" style="background:#fee2e2; color:#991b1b; border:1px solid #fca5a5;" data-ctr-delete="${c.id}">
+              🗑️ Delete Permanently / ลบถาวร / 永久删除
+            </button>
+          </div>
         </div>`
       )
       .join("");
+
+    listEl.querySelectorAll("[data-ctr-save]").forEach((btn) => {
+      btn.addEventListener("click", () => saveContractorRow(btn.dataset.ctrSave));
+    });
+    listEl.querySelectorAll("[data-ctr-toggle]").forEach((btn) => {
+      btn.addEventListener("click", () => toggleContractorRow(btn.dataset.ctrToggle));
+    });
+    listEl.querySelectorAll("[data-ctr-delete]").forEach((btn) => {
+      btn.addEventListener("click", () => deleteContractorRow(btn.dataset.ctrDelete));
+    });
   }
   renderContractorManageList();
+
+  async function saveContractorRow(id) {
+    const row = document.querySelector(`.cat-manage-row[data-ctr-id="${id}"]`);
+    if (!row) return;
+    const name = row.querySelector('[data-field="name"]').value.trim();
+    const lineContact = row.querySelector('[data-field="lineContact"]').value.trim();
+    const phone = row.querySelector('[data-field="phone"]').value.trim();
+    const selectedCategories = Array.from(row.querySelectorAll(".ctr-row-cat-checkbox:checked")).map((cb) => cb.value);
+    if (!name) {
+      showToast(T.errorPrefix + "กรุณาระบุชื่อผู้รับเหมา");
+      return;
+    }
+    try {
+      await updateContractor(id, { name, lineContact, phone, categories: selectedCategories });
+      const c = contractors.find((x) => x.id === id);
+      if (c) Object.assign(c, { name, lineContact, phone, categories: selectedCategories });
+      renderContractorManageList();
+      refreshContractorSelect();
+      showToast(T.msgCategorySaved);
+    } catch (e) {
+      console.error(e);
+      showToast(T.errorPrefix + e.message);
+    }
+  }
+
+  async function toggleContractorRow(id) {
+    const c = contractors.find((x) => x.id === id);
+    if (!c) return;
+    const nextActive = c.active === false ? true : false;
+    if (nextActive === false && !confirm("Disable this contractor? / ปิดใช้งานผู้รับเหมารายนี้? (จะไม่ขึ้นในรายการให้เลือกส่งงานอีก แต่ประวัติงานเก่ายังอยู่ครบ) / 停用此承包商？")) {
+      return;
+    }
+    try {
+      await updateContractor(id, { active: nextActive });
+      c.active = nextActive;
+      renderContractorManageList();
+      refreshContractorSelect();
+      showToast(T.msgCategorySaved);
+    } catch (e) {
+      console.error(e);
+      showToast(T.errorPrefix + e.message);
+    }
+  }
+
+  // ลบผู้รับเหมาถาวร — เตือนก่อนเสมอ และเตือนเพิ่มเป็นพิเศษถ้ามีงานที่เคยส่งให้ผู้รับเหมารายนี้อยู่ในระบบ
+  // (ตามที่พี่เลือกไว้: "เตือนก่อนกดลบจริง" แต่ไม่บล็อกการลบ)
+  async function deleteContractorRow(id) {
+    const c = contractors.find((x) => x.id === id);
+    if (!c) return;
+    const relatedJobsCount = contractorJobs.filter((j) => j.contractorId === id).length;
+    const warnExtra = relatedJobsCount
+      ? `\n\n⚠️ ผู้รับเหมารายนี้มีงานที่เคยส่งให้แล้ว ${relatedJobsCount} งานอยู่ในระบบ ลบแล้วงานเหล่านั้นจะยังอยู่ แต่จะหาชื่อผู้รับเหมาไม่เจอ`
+      : "";
+    if (!confirm(`Delete "${c.name}" permanently? This cannot be undone.\nลบผู้รับเหมา "${c.name}" ถาวร? กู้คืนไม่ได้${warnExtra}`)) {
+      return;
+    }
+    try {
+      await deleteContractor(id);
+      contractors = contractors.filter((x) => x.id !== id);
+      renderContractorManageList();
+      refreshContractorSelect();
+      showToast(T.msgCategorySaved);
+    } catch (e) {
+      console.error(e);
+      showToast(T.errorPrefix + e.message);
+    }
+  }
 
   document.getElementById("contractor-add-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -588,8 +675,14 @@ async function main() {
     e.target.value = "";
   });
 
+  // งานประเภท fix/defect ใช้ฟอร์ม "วันเข้าหน้างาน" เหมือนกัน ส่วน defect เพิ่มช่อง "ไม่ผ่านครั้งที่" ขึ้นมาอีกช่อง
+  function updateCjTypeFieldVisibility(type) {
+    document.getElementById("cj-visit-date-field").style.display = type === CONTRACTOR_JOB_TYPE.QUOTE ? "none" : "block";
+    document.getElementById("cj-defect-round-field").style.display = type === CONTRACTOR_JOB_TYPE.DEFECT ? "block" : "none";
+  }
+
   document.getElementById("cj-type").addEventListener("change", (e) => {
-    document.getElementById("cj-visit-date-field").style.display = e.target.value === CONTRACTOR_JOB_TYPE.FIX ? "block" : "none";
+    updateCjTypeFieldVisibility(e.target.value);
   });
 
   document.getElementById("add-contractor-job-btn").addEventListener("click", () => {
@@ -600,10 +693,11 @@ async function main() {
     refreshContractorSelect();
     refreshContractorJobProjectSelect();
     document.getElementById("cj-type").value = "fix";
-    document.getElementById("cj-visit-date-field").style.display = "block";
+    updateCjTypeFieldVisibility(CONTRACTOR_JOB_TYPE.FIX);
     document.getElementById("cj-site").value = "";
     document.getElementById("cj-description").value = "";
     document.getElementById("cj-visit-date").value = "";
+    document.getElementById("cj-defect-round").value = "";
     cjImages = [];
     cjSourceTicketId = "";
     renderCjImagePreviews();
@@ -631,7 +725,7 @@ async function main() {
     refreshContractorJobProjectSelect();
 
     document.getElementById("cj-type").value = CONTRACTOR_JOB_TYPE.FIX;
-    document.getElementById("cj-visit-date-field").style.display = "block";
+    updateCjTypeFieldVisibility(CONTRACTOR_JOB_TYPE.FIX);
 
     const projSel = document.getElementById("cj-project");
     if (r.projectId && Array.from(projSel.options).some((o) => o.value === r.projectId)) {
@@ -640,6 +734,7 @@ async function main() {
     document.getElementById("cj-site").value = r.siteName || "";
     document.getElementById("cj-description").value = r.description || "";
     document.getElementById("cj-visit-date").value = "";
+    document.getElementById("cj-defect-round").value = "";
 
     // แนบรูปภาพก่อนซ่อมของงานนี้ไปให้ผู้รับเหมาดูประกอบด้วยเลย (แก้ไข/ลบออกได้ก่อนกดส่ง)
     cjImages = (r.images || []).slice(0, MAX_IMAGES).map((img) => ({ url: img.url }));
@@ -660,9 +755,14 @@ async function main() {
     const contractorId = contractorSel.value;
     const contractorName = contractorSel.selectedOptions[0]?.dataset.name || "";
     const siteVisitDate = document.getElementById("cj-visit-date").value;
+    const defectRound = document.getElementById("cj-defect-round").value;
 
     if (!projectId || !description || !contractorId) {
       showToast(T.errorPrefix + "กรุณากรอกข้อมูลที่จำเป็นให้ครบ");
+      return;
+    }
+    if (type === CONTRACTOR_JOB_TYPE.DEFECT && !defectRound) {
+      showToast(T.errorPrefix + "กรุณาระบุว่าไม่ผ่านการตรวจครั้งที่เท่าไหร่");
       return;
     }
     const btn = document.getElementById("save-contractor-job-btn");
@@ -678,7 +778,8 @@ async function main() {
         images: cjImages,
         contractorId,
         contractorName,
-        siteVisitDate: type === CONTRACTOR_JOB_TYPE.FIX ? siteVisitDate : "",
+        siteVisitDate: type !== CONTRACTOR_JOB_TYPE.QUOTE ? siteVisitDate : "",
+        defectRound: type === CONTRACTOR_JOB_TYPE.DEFECT ? defectRound : "",
         updatedBy: currentIdentity?.name || "",
       });
       document.getElementById("contractor-job-modal").style.display = "none";
@@ -730,12 +831,22 @@ async function main() {
     tbody.innerHTML = contractorJobs
       .map((j) => {
         const style = CONTRACTOR_JOB_STATUS_STYLE[j.status] || CONTRACTOR_JOB_STATUS_STYLE["รอผู้รับเหมาตอบรับ"];
+        const typeStyle = CONTRACTOR_JOB_TYPE_STYLE[j.type] || CONTRACTOR_JOB_TYPE_STYLE[CONTRACTOR_JOB_TYPE.FIX];
         let detail = escapeHtmlGlobal(j.description || "").slice(0, 60);
         if (j.status === "ผู้รับเหมารับงานแล้ว") {
-          detail = j.type === CONTRACTOR_JOB_TYPE.FIX
-            ? `📅 ${formatDateThai(j.siteVisitDate)} · ${j.repairDays ?? "-"} วัน`
-            : `${j.quoteDays ?? "-"} วัน · ฿${Number(j.quotePrice || 0).toLocaleString("th-TH")}`;
+          if (j.type === CONTRACTOR_JOB_TYPE.QUOTE) {
+            detail = `💰 ${j.quoteDays ?? "-"} วัน · ฿${Number(j.quotePrice || 0).toLocaleString("th-TH")}`;
+          } else if (j.type === CONTRACTOR_JOB_TYPE.FIX) {
+            detail = `📅 ${formatDateThai(j.siteVisitDate)} · ${j.repairDays ?? "-"} วัน${j.repairPrice != null ? ` · ฿${Number(j.repairPrice || 0).toLocaleString("th-TH")}` : ""}`;
+          } else {
+            detail = `📅 ${formatDateThai(j.siteVisitDate)} · ${j.repairDays ?? "-"} วัน`;
+          }
         }
+        const typeBadge = `<span class="cat-badge" style="background:${typeStyle.bg}; color:${typeStyle.text}; border:1px solid ${typeStyle.border}; font-weight:600;">${typeStyle.icon} ${jobTypeTri(j.type)}</span>${
+          j.type === CONTRACTOR_JOB_TYPE.DEFECT && j.defectRound
+            ? `<div class="hint" style="color:#991b1b; font-weight:700; margin-top:2px;">⚠️ ครั้งที่ ${escapeHtmlGlobal(String(j.defectRound))}</div>`
+            : ""
+        }`;
         const link = `${window.location.origin}${window.location.pathname.replace(/admin\.html$/, "")}contractor.html?job=${j.id}`;
         const approvalStyle = {
           pending: { bg: "#dbeafe", text: "#1e40af", label: "⏳ Awaiting approval / รออนุมัติ / 待批准" },
@@ -745,17 +856,38 @@ async function main() {
         const approvalBadge = approvalStyle
           ? `<div class="cat-badge" style="background:${approvalStyle.bg}; color:${approvalStyle.text}; font-size:10px; margin-top:4px;">${approvalStyle.label}</div>`
           : "";
+
+        // ---- PO / Delivery cell (ระบบส่งมอบงาน เฟส 2 ขั้นที่ 1) ----
+        let deliveryCell = `<span class="hint">-</span>`;
+        if (j.status === CONTRACTOR_JOB_STATUS.CONFIRMED || j.status === CONTRACTOR_JOB_STATUS.DONE) {
+          const poLine = j.poNumber
+            ? `<div class="hint" style="font-weight:600;">🧾 ${escapeHtmlGlobal(j.poNumber)} <button class="btn btn-outline btn-sm cj-set-po-btn" data-id="${j.id}" style="padding:1px 6px; font-size:11px;">✏️</button></div>`
+            : `<button class="btn btn-outline btn-sm cj-set-po-btn" data-id="${j.id}">${T.btnSetPoNumber}</button>`;
+          let deliveryLine = `<div class="hint" style="margin-top:4px;">- ${T.contractorSubmitDeliveryTitle}</div>`;
+          if (j.deliveryAccepted) {
+            deliveryLine = `<div class="hint" style="margin-top:4px; color:#1e40af; font-weight:600;">✅ ${formatDateThai(j.deliveryDate)}</div>`;
+          } else if (j.deliverySubmitted) {
+            deliveryLine = `
+              <div class="hint" style="margin-top:4px; color:#92400e;">⏳ ${formatDateThai(j.deliveryDate)}</div>
+              <button class="btn btn-sm cj-accept-delivery-btn" data-id="${j.id}" style="background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; margin-top:4px;">${T.btnAcceptDelivery}</button>`;
+          }
+          deliveryCell = poLine + deliveryLine;
+        }
+
         return `
         <tr>
           <td>${escapeHtmlGlobal(j.jobId || "")}${j.ticketId ? `<div class="hint" style="margin-top:2px;">🔗 #${escapeHtmlGlobal(j.ticketId)}</div>` : ""}</td>
-          <td>${jobTypeTri(j.type)}</td>
+          <td>${typeBadge}</td>
           <td>${escapeHtmlGlobal(j.project || "")}</td>
           <td>${escapeHtmlGlobal(j.contractorName || "")}</td>
           <td style="max-width:220px;">${detail}</td>
           <td><span class="cat-badge" style="background:${style.bg}; color:${style.text};"><span class="dot" style="background:${style.dot};"></span>${contractorJobStatusTri(j.status)}</span>${approvalBadge}</td>
+          <td>${deliveryCell}</td>
           <td>
             <button class="btn btn-outline btn-sm cj-copy-link-btn" data-link="${escapeHtmlGlobal(link)}" title="Copy job link / คัดลอกลิงก์งาน / 复制工程链接">📋</button>
             <button class="btn btn-outline btn-sm cj-send-approval-btn" data-id="${j.id}" title="Send approval link to management / ส่งลิงก์อนุมัติให้ผู้บริหาร / 发送审批链接给管理层">🔗</button>
+            <button class="btn btn-outline btn-sm cj-print-btn" data-id="${j.id}" title="${T.btnPrintDeliveryNote}">📄</button>
+            <button class="btn btn-sm cj-delete-btn" style="background:#fee2e2; color:#991b1b; border:1px solid #fca5a5;" data-id="${j.id}" title="Delete permanently / ลบถาวร / 永久删除">🗑️</button>
           </td>
         </tr>`;
       })
@@ -782,6 +914,100 @@ async function main() {
         }
       });
     });
+    tbody.querySelectorAll(".cj-delete-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.id;
+        const j = contractorJobs.find((x) => x.id === id);
+        if (!j) return;
+        if (!confirm(`Delete job "${j.jobId || id}" permanently? This cannot be undone.\nลบงาน "${j.jobId || id}" ถาวร? กู้คืนไม่ได้`)) {
+          return;
+        }
+        try {
+          await deleteContractorJob(id);
+          showToast(T.msgCategorySaved);
+        } catch (e) {
+          console.error(e);
+          showToast(T.errorPrefix + e.message);
+        }
+      });
+    });
+    // ---- PO / ตรวจรับงาน / ใบส่งมอบงาน PDF (เฟส 2 ขั้นที่ 1) ----
+    tbody.querySelectorAll(".cj-set-po-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.id;
+        const j = contractorJobs.find((x) => x.id === id);
+        if (!j) return;
+        const poNumber = prompt(T.promptSetPoNumber, j.poNumber || "");
+        if (poNumber === null) return; // ผู้ใช้กดยกเลิก
+        try {
+          await setPoNumber(id, poNumber);
+          showToast(T.msgCategorySaved);
+        } catch (e) {
+          console.error(e);
+          showToast(T.errorPrefix + e.message);
+        }
+      });
+    });
+    tbody.querySelectorAll(".cj-accept-delivery-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.id;
+        const j = contractorJobs.find((x) => x.id === id);
+        if (!j) return;
+        if (!confirm(`Confirm delivery accepted for job "${j.jobId || id}"? / ยืนยันตรวจรับงาน "${j.jobId || id}" แล้ว?`)) {
+          return;
+        }
+        try {
+          await acceptDelivery(id, currentIdentity?.name || "");
+          showToast(T.msgCategorySaved);
+        } catch (e) {
+          console.error(e);
+          showToast(T.errorPrefix + e.message);
+        }
+      });
+    });
+    tbody.querySelectorAll(".cj-print-btn").forEach((btn) => {
+      btn.addEventListener("click", () => printDeliveryNote(btn.dataset.id));
+    });
+  }
+
+  // พิมพ์ "ใบส่งมอบงาน" ของงานผู้รับเหมารายการเดียว (ใช้หน้าต่างสั่งพิมพ์ของเบราว์เซอร์ เหมือน Export PDF อื่นๆ ในระบบ)
+  function printDeliveryNote(id) {
+    const j = contractorJobs.find((x) => x.id === id);
+    if (!j) return;
+    const typeStyle = CONTRACTOR_JOB_TYPE_STYLE[j.type] || CONTRACTOR_JOB_TYPE_STYLE[CONTRACTOR_JOB_TYPE.FIX];
+    const priceLine =
+      j.type === CONTRACTOR_JOB_TYPE.QUOTE
+        ? `Price / ราคา: ฿${Number(j.quotePrice || 0).toLocaleString("th-TH")}<br>`
+        : j.type === CONTRACTOR_JOB_TYPE.FIX && j.repairPrice != null
+        ? `Price / ราคา: ฿${Number(j.repairPrice || 0).toLocaleString("th-TH")}<br>`
+        : "";
+    document.getElementById("print-report").innerHTML = `
+      <div class="print-report-header">
+        ${COMPANY?.logo ? `<img src="${COMPANY.logo}">` : ""}
+        <div class="titles">
+          <h1>${T.deliveryNoteTitle} — ${escapeHtmlGlobal(COMPANY?.nameTh || "")}</h1>
+          <div class="sub">${escapeHtmlGlobal(COMPANY?.nameEn || "")}</div>
+        </div>
+      </div>
+      <div class="print-report-meta">
+        Job No. / เลขที่งาน: ${escapeHtmlGlobal(j.jobId || "")}<br>
+        Type / ประเภทงาน: ${typeStyle.icon} ${jobTypeTri(j.type)}${j.type === CONTRACTOR_JOB_TYPE.DEFECT && j.defectRound ? ` (ครั้งที่ ${escapeHtmlGlobal(String(j.defectRound))})` : ""}<br>
+        PO Number / เลขที่ PO: ${escapeHtmlGlobal(j.poNumber || "-")}<br>
+        Project / โปรเจกต์: ${escapeHtmlGlobal(j.project || "-")}<br>
+        Site / สถานที่: ${escapeHtmlGlobal(j.siteName || "-")}<br>
+        Contractor / ผู้รับเหมา: ${escapeHtmlGlobal(j.contractorName || "-")}<br>
+        Description / รายละเอียดงาน: ${escapeHtmlGlobal(j.description || "-")}<br>
+        Site visit date / วันเข้าหน้างาน: ${formatDateThai(j.siteVisitDate)}<br>
+        Repair days / จำนวนวันซ่อม: ${j.repairDays ?? j.quoteDays ?? "-"}<br>
+        ${priceLine}
+        Delivery date / วันส่งมอบงาน: ${formatDateThai(j.deliveryDate)}<br>
+        Delivery note / หมายเหตุส่งมอบ: ${escapeHtmlGlobal(j.deliveryNote || "-")}<br>
+        Delivery accepted / ตรวจรับงานแล้ว: ${j.deliveryAccepted ? `✅ Yes / ใช่ (${escapeHtmlGlobal(j.deliveryAcceptedBy || "-")}, ${formatDateThai(j.deliveryAcceptedAt?.toDate ? j.deliveryAcceptedAt.toDate().toISOString().slice(0, 10) : "")})` : "❌ Not yet / ยังไม่ตรวจรับ"}<br>
+        Status / สถานะ: ${contractorJobStatusTri(j.status)}
+      </div>
+    `;
+    showToast(T.pdfPrintHint, 5000);
+    setTimeout(() => window.print(), 300);
   }
 
   document.getElementById("close-job-approval-link-modal").addEventListener("click", () => {
@@ -1396,6 +1622,34 @@ async function main() {
     } finally {
       btn.disabled = false;
       btn.textContent = T.btnSaveChanges;
+    }
+  });
+
+  // ลบรายการแจ้งซ่อมถาวร (ตามคำขอ) — เตือนก่อนเสมอ และเตือนเพิ่มเป็นพิเศษถ้าเคยส่งงานนี้ให้ผู้รับเหมาไปแล้ว
+  document.getElementById("delete-detail-btn").addEventListener("click", async () => {
+    if (!activeDetailId) return;
+    const r = allRequests.find((x) => x.id === activeDetailId);
+    if (!r) return;
+    const ticketKey = r.ticketId || r.id;
+    const relatedJobsCount = contractorJobs.filter((j) => j.ticketId === ticketKey).length;
+    const warnExtra = relatedJobsCount
+      ? `\n\n⚠️ รายการนี้เคยถูกส่งให้ผู้รับเหมาไปแล้ว ${relatedJobsCount} งาน ลบแล้วงานเหล่านั้นจะยังอยู่ แต่จะหาที่มาไม่เจอ`
+      : "";
+    if (!confirm(`Delete ticket "${ticketKey}" permanently? This cannot be undone.\nลบรายการแจ้งซ่อม "${ticketKey}" ถาวร? กู้คืนไม่ได้${warnExtra}`)) {
+      return;
+    }
+    const btn = document.getElementById("delete-detail-btn");
+    btn.disabled = true;
+    try {
+      await deleteDoc(doc(db, "repairRequests", activeDetailId));
+      showToast(T.msgSaveSuccess);
+      detailModal.style.display = "none";
+      activeDetailId = null;
+    } catch (e) {
+      console.error(e);
+      showToast(T.errorPrefix + e.message);
+    } finally {
+      btn.disabled = false;
     }
   });
 }

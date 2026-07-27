@@ -155,7 +155,8 @@
               <th>Contractor / ผู้รับเหมา / 承包商</th>
               <th>Details / รายละเอียด / 详情</th>
               <th>Status / สถานะ / 状态</th>
-              <th style="width:150px;">Links / ลิงก์ / 链接</th>
+              <th style="width:170px;">PO / Delivery / เลขที่ PO / ส่งมอบงาน / PO单／交付</th>
+              <th style="width:170px;">Links / ลิงก์ / 链接</th>
             </tr>
           </thead>
           <tbody id="contractor-jobs-tbody"></tbody>
@@ -267,6 +268,7 @@
 
     <button class="btn btn-primary" id="save-detail-btn">Save Changes / บันทึกการแก้ไข / 保存修改</button>
     <button class="btn btn-outline btn-block" style="margin-top:10px;" id="cancel-detail-btn">Cancel / ยกเลิก / 取消</button>
+    <button class="btn btn-block" style="margin-top:14px; background:#fee2e2; color:#991b1b; border:1px solid #fca5a5;" id="delete-detail-btn">🗑️ Delete This Ticket Permanently / ลบรายการแจ้งซ่อมนี้ถาวร / 永久删除此工单</button>
   </div>
 </div>
 
@@ -281,9 +283,15 @@
     <div class="field">
       <label>Job Type * / ประเภทงาน * / 工程类型 *</label>
       <select id="cj-type">
-        <option value="fix">Fix / repair work / งานแก้ไข / 维修工程</option>
-        <option value="quote">New work (quote needed) / งานใหม่ที่ต้องเสนอราคา / 新工程（需报价）</option>
+        <option value="fix">🔧 Fix / repair work / งานแก้ไข / 维修工程</option>
+        <option value="quote">💰 New work (quote needed) / งานใหม่ที่ต้องเสนอราคา / 新工程（需报价）</option>
+        <option value="defect">⚠️ Defect / failed inspection / งานแก้ไขที่ตรวจไม่ผ่าน / 检验不合格返修</option>
       </select>
+    </div>
+
+    <div class="field" id="cj-defect-round-field" style="display:none;">
+      <label>Failed inspection round no. * / ไม่ผ่านการตรวจครั้งที่ * / 第几次检验不合格 *</label>
+      <input type="number" id="cj-defect-round" min="1" step="1" placeholder="e.g. 2">
     </div>
 
     <div class="field">

@@ -62,9 +62,9 @@ export function statusTri(label) { return STATUS_TRI[label] || label; }
 export function deptTri(label) { return DEPARTMENT_TRI[label] || label; }
 export function contractorJobStatusTri(label) { return CONTRACTOR_JOB_STATUS_TRI[label] || label; }
 export function jobTypeTri(type) {
-  return type === "quote"
-    ? tri("New work (quote needed)", "งานใหม่ที่ต้องเสนอราคา", "新工程（需报价）")
-    : tri("Fix / repair work", "งานแก้ไข", "维修工程");
+  if (type === "quote") return tri("New work (quote needed)", "งานใหม่ที่ต้องเสนอราคา", "新工程（需报价）");
+  if (type === "defect") return tri("Defect / failed inspection", "งานแก้ไขที่ตรวจไม่ผ่าน", "检验不合格返修");
+  return tri("Fix / repair work", "งานแก้ไข", "维修工程");
 }
 
 // ---------- ข้อความ UI ทั่วไป (static text) ----------
@@ -258,6 +258,7 @@ export const T = {
   contractorJobNotFound: tri("Job not found or link expired", "ไม่พบข้อมูลงานนี้ หรือลิงก์ไม่ถูกต้อง", "未找到该工程或链接无效"),
   contractorSiteVisitDateLabel: tri("Site visit date", "วันที่เข้าหน้างาน", "现场勘查日期"),
   contractorRepairDaysLabel: tri("Number of days to complete", "จำนวนวันที่ใช้ซ่อม", "维修所需天数"),
+  contractorRepairPriceLabel: tri("Repair price (THB)", "ราคาค่าซ่อมเพิ่มเติม (บาท)", "维修费用（泰铢）"),
   contractorSubmitBtn: tri("Submit", "ส่งข้อมูล", "提交"),
   contractorAcceptBtn: tri("Accept job", "รับงาน", "接受工程"),
   contractorRejectBtn: tri("Reject job", "ปฏิเสธงาน", "拒绝工程"),
@@ -266,6 +267,20 @@ export const T = {
   contractorQuoteNoteLabel: tri("Additional notes", "หมายเหตุเพิ่มเติม", "备注"),
   contractorSubmittedThanks: tri("Submitted — thank you!", "ส่งข้อมูลเรียบร้อยแล้ว ขอบคุณครับ/ค่ะ", "已提交，谢谢！"),
   contractorRejectedMsg: tri("You have rejected this job", "คุณได้ปฏิเสธงานนี้แล้ว", "您已拒绝此工程"),
+
+  // -------- ระบบส่งมอบงาน / PO (เฟส 2 ขั้นที่ 1) --------
+  contractorPoLabel: tri("PO Number", "เลขที่ใบสั่งซื้อ (PO)", "采购单号（PO）"),
+  contractorDeliveryDateLabel: tri("Delivery date", "วันที่ส่งมอบงาน", "交付日期"),
+  contractorDeliveryNoteLabel: tri("Delivery note (optional)", "หมายเหตุการส่งมอบงาน (ถ้ามี)", "交付备注（可选）"),
+  contractorSubmitDeliveryTitle: tri("📦 Submit delivery", "📦 แจ้งส่งมอบงาน", "📦 提交交付"),
+  contractorSubmitDeliveryBtn: tri("Submit delivery", "ส่งมอบงาน", "提交交付"),
+  contractorDeliverySubmittedMsg: tri("Delivery submitted — waiting for internal team to inspect", "แจ้งส่งมอบงานแล้ว กำลังรอทีมงานตรวจรับ", "已提交交付，等待内部团队验收"),
+  contractorDeliveryAcceptedMsg: tri("Delivery inspected & accepted — job complete", "ตรวจรับงานแล้ว งานเสร็จสมบูรณ์", "已验收交付，工程完成"),
+  btnAcceptDelivery: tri("✅ Accept delivery", "✅ ตรวจรับงาน", "✅ 验收交付"),
+  btnSetPoNumber: tri("🧾 Set PO No.", "🧾 กรอกเลขที่ PO", "🧾 填写PO号"),
+  promptSetPoNumber: tri("Enter PO number for this job:", "กรอกเลขที่ PO สำหรับงานนี้:", "请输入此工程的PO号："),
+  btnPrintDeliveryNote: tri("Print delivery note", "พิมพ์ใบส่งมอบงาน", "打印交付单"),
+  deliveryNoteTitle: tri("Job Delivery Note", "ใบส่งมอบงาน", "工程交付单"),
   btnAddContractorJob: tri("+ Send job to contractor", "+ ส่งงานให้ผู้รับเหมา", "+ 发送工程给承包商"),
   contractorJobTypeLabel: tri("Job type", "ประเภทงาน", "工程类型"),
   contractorLabel: tri("Contractor", "ผู้รับเหมา", "承包商"),
@@ -275,6 +290,11 @@ export const T = {
   contractorNameLabel: tri("Contractor name *", "ชื่อผู้รับเหมา *", "承包商名称 *"),
   contractorLineContactLabel: tri("LINE contact (for reference)", "ช่องทางติดต่อไลน์ (สำหรับอ้างอิง)", "LINE 联系方式（仅供参考）"),
   contractorPhoneLabel: tri("Phone", "เบอร์โทร", "电话"),
+
+  // -------- Defect / รอบตรวจไม่ผ่าน --------
+  cjDefectRoundLabel: tri("Failed inspection round no.", "ไม่ผ่านการตรวจครั้งที่", "第几次检验不合格"),
+  contractorDefectRoundPrefix: tri("Failed inspection round no.", "ไม่ผ่านการตรวจครั้งที่", "第几次检验不合格"),
+  contractorAwaitingResponseMsg: tri("Please accept or reject this job below", "กรุณากดรับหรือปฏิเสธงานด้านล่างนี้", "请在下方接受或拒绝此工程"),
 };
 
 // ---------- ข้อความที่มีตัวแปรแทรก (parametrized) ----------

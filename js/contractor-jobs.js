@@ -6,6 +6,7 @@ import {
   doc,
   getDoc,
   updateDoc,
+  deleteDoc,
   onSnapshot,
   query,
   orderBy,
@@ -26,7 +27,7 @@ export async function addContractorJob(data) {
   const jobId = generateJobId();
   const ref = await addDoc(collection(db, CONTRACTOR_JOBS_COLLECTION), {
     jobId,
-    type: data.type, // "fix" | "quote"
+    type: data.type, // "fix" | "quote" | "defect"
     ticketId: data.ticketId || "",
     projectId: data.projectId || "",
     project: data.project || "",
@@ -35,9 +36,13 @@ export async function addContractorJob(data) {
     images: data.images || [],
     contractorId: data.contractorId || "",
     contractorName: data.contractorName || "",
-    // แอดมินเสนอวันเข้าหน้างานเบื้องต้นได้ (ผู้รับเหมายืนยัน/แก้ไขได้อีกครั้งผ่านลิงก์)
+    // แอดมินเสนอวันเข้าหน้างานเบื้องต้นได้ (ผู้รับเหมายืนยัน/แก้ไขได้อีกครั้งผ่านลิงก์) — ใช้กับ fix/defect
     siteVisitDate: data.siteVisitDate || "",
     repairDays: null,
+    // เฉพาะงานประเภท "fix" — ผู้รับเหมาเสนอราคาค่าซ่อมเพิ่มเติมด้วย (defect ไม่มีราคา เพราะเป็นงานแก้ไขที่ตรวจไม่ผ่าน ไม่คิดเงินเพิ่ม)
+    repairPrice: null,
+    // เฉพาะงานประเภท "defect" — เลขรอบที่ตรวจไม่ผ่าน (admin เป็นคนระบุตอนสร้างงาน)
+    defectRound: data.defectRound != null && data.defectRound !== "" ? Number(data.defectRound) : null,
     contractorResponse: "",
     quoteDays: null,
     quotePrice: null,
@@ -47,12 +52,26 @@ export async function addContractorJob(data) {
     updatedAt: serverTimestamp(),
     updatedBy: data.updatedBy || "",
     respondedAt: null,
+    // ---- ระบบส่งมอบงาน/PO (เฟส 2 ขั้นที่ 1: PO + ส่งมอบงาน + ตรวจรับ + ใบส่งมอบงาน PDF) ----
+    poNumber: "", // เลขที่ใบสั่งซื้อ — แอดมินกรอกเองทีหลัง (ปกติหลังตกลงราคา/วันแล้ว)
+    deliveryDate: "", // วันที่ผู้รับเหมาแจ้งว่าส่งมอบงานจริง
+    deliveryNote: "",
+    deliverySubmitted: false,
+    deliverySubmittedAt: null,
+    deliveryAccepted: false, // ทีมงานภายในกด "ตรวจรับงาน" แล้วหรือยัง
+    deliveryAcceptedBy: "",
+    deliveryAcceptedAt: null,
   });
   return { id: ref.id, jobId };
 }
 
 export async function updateContractorJob(id, patch) {
   await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), { ...patch, updatedAt: serverTimestamp() });
+}
+
+// ลบงานที่ส่งให้ผู้รับเหมาถาวร (ตามคำขอ) — กู้คืนไม่ได้
+export async function deleteContractorJob(id) {
+  await deleteDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id));
 }
 
 // ---------------- ลิงก์อนุมัติสำหรับผู้บริหาร (ไม่ต้องล็อกอิน) ----------------
@@ -84,11 +103,14 @@ export async function rejectJobPublic(id, approverName) {
 
 // ---------------- เรียกจากหน้าผู้รับเหมา (contractor.html, ไม่ต้องล็อกอิน) ----------------
 
-// งานประเภท "งานแก้ไข" — ผู้รับเหมายืนยัน/ระบุวันเข้าหน้างาน + จำนวนวันซ่อม
-export async function respondFixJob(id, { siteVisitDate, repairDays }) {
+// งานประเภท "งานแก้ไข" / "งานแก้ไขที่ตรวจไม่ผ่าน" — ผู้รับเหมายืนยัน/ระบุวันเข้าหน้างาน + จำนวนวันซ่อม
+// (ใช้ร่วมกันทั้ง fix และ defect — ต้องกดรับงานนี้ก่อนถึงจะกรอกได้)
+// repairPrice: ใช้เฉพาะ fix เท่านั้น (defect ไม่ส่งค่านี้มา เพราะเป็นงานแก้ไขที่ตรวจไม่ผ่าน ไม่คิดเงินเพิ่ม)
+export async function respondFixJob(id, { siteVisitDate, repairDays, repairPrice }) {
   await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), {
     siteVisitDate,
     repairDays: Number(repairDays),
+    repairPrice: repairPrice != null && repairPrice !== "" ? Number(repairPrice) : null,
     contractorResponse: "confirmed",
     status: CONTRACTOR_JOB_STATUS.CONFIRMED,
     respondedAt: serverTimestamp(),
@@ -96,8 +118,8 @@ export async function respondFixJob(id, { siteVisitDate, repairDays }) {
   });
 }
 
-// งานประเภท "งานใหม่ที่ต้องเสนอราคา" — ผู้รับเหมาปฏิเสธงาน
-export async function rejectQuoteJob(id) {
+// ปฏิเสธงาน — ใช้ร่วมกันได้ทั้ง 3 ประเภทงาน (fix / quote / defect)
+export async function rejectJob(id) {
   await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), {
     contractorResponse: "rejected",
     status: CONTRACTOR_JOB_STATUS.REJECTED,
@@ -147,4 +169,40 @@ export function watchContractorJob(id, cb, onErr) {
 export async function getContractorJobOnce(id) {
   const snap = await getDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id));
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+}
+
+// ============================================================
+//  ระบบส่งมอบงาน / PO (เฟส 2 ขั้นที่ 1) — ต่อยอดจาก contractorJobs เดิม ไม่แยกแอปใหม่
+//  ลำดับ: (ตกลงราคา/วันแล้ว = CONFIRMED) → แอดมินออกเลขที่ PO → ผู้รับเหมาแจ้งส่งมอบงาน
+//  → ทีมงานภายในตรวจรับ → status เปลี่ยนเป็น DONE ("เสร็จสิ้น")
+// ============================================================
+
+// แอดมินออก/แก้ไขเลขที่ PO ให้งานนี้ (ปกติทำหลังตกลงราคา/วันเข้าหน้างานกับผู้รับเหมาแล้ว)
+export async function setPoNumber(id, poNumber) {
+  await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), {
+    poNumber: (poNumber || "").trim(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+// ผู้รับเหมาแจ้งส่งมอบงานจริง (ผ่านลิงก์สาธารณะ contractor.html เดิม ไม่ต้องล็อกอิน)
+export async function submitDelivery(id, { deliveryDate, deliveryNote }) {
+  await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), {
+    deliveryDate,
+    deliveryNote: (deliveryNote || "").trim(),
+    deliverySubmitted: true,
+    deliverySubmittedAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+  });
+}
+
+// ทีมงานภายในกด "ตรวจรับงาน" หลังผู้รับเหมาแจ้งส่งมอบงานแล้ว — ปิดงานเป็นเสร็จสิ้น
+export async function acceptDelivery(id, acceptedByName) {
+  await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), {
+    deliveryAccepted: true,
+    deliveryAcceptedBy: (acceptedByName || "").trim(),
+    deliveryAcceptedAt: serverTimestamp(),
+    status: CONTRACTOR_JOB_STATUS.DONE,
+    updatedAt: serverTimestamp(),
+  });
 }

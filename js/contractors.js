@@ -1,5 +1,5 @@
 // contractors.js — จัดการ "รายชื่อผู้รับเหมา" ผ่าน Firestore (collection "contractors")
-import { db, collection, getDocs, doc, addDoc, updateDoc, serverTimestamp } from "./firebase-init.js";
+import { db, collection, getDocs, doc, addDoc, updateDoc, deleteDoc, serverTimestamp } from "./firebase-init.js";
 import { CONTRACTORS_COLLECTION } from "./firebase-init.js";
 
 // โหลดผู้รับเหมาทั้งหมด (รวมที่ปิดใช้งานแล้วด้วย) เรียงตามชื่อ (ไทย)
@@ -32,4 +32,9 @@ export async function addContractor({ name, lineContact, phone, note, categories
 
 export async function updateContractor(id, patch) {
   await updateDoc(doc(db, CONTRACTORS_COLLECTION, id), { ...patch, updatedAt: serverTimestamp() });
+}
+
+// ลบผู้รับเหมาถาวร (ตามคำขอ) — กู้คืนไม่ได้ ต่างจาก updateContractor(id, {active:false}) ที่เป็นแค่ "ปิดใช้งาน"
+export async function deleteContractor(id) {
+  await deleteDoc(doc(db, CONTRACTORS_COLLECTION, id));
 }

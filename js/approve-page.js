@@ -1,4 +1,4 @@
-import { COMPANY, CONTRACTOR_JOB_TYPE, CONTRACTOR_JOB_STATUS } from "./config.js";
+import { COMPANY, CONTRACTOR_JOB_TYPE, CONTRACTOR_JOB_TYPE_STYLE, CONTRACTOR_JOB_STATUS } from "./config.js";
 import { renderCompanyBrandBar, showToast, formatDateThai } from "./utils.js";
 import { T, jobTypeTri, contractorJobStatusTri } from "./i18n.js";
 import { watchContractorJob, approveJobPublic, rejectJobPublic } from "./contractor-jobs.js";
@@ -41,14 +41,25 @@ function render() {
     .map((img, i) => `<img src="${img.url}" data-idx="${i}" title="${T.clickToViewPhoto || ""}">`)
     .join("");
 
+  const isFixLike = job.type !== CONTRACTOR_JOB_TYPE.QUOTE; // fix และ defect ใช้ข้อมูลชุดเดียวกัน
+  const typeStyle = CONTRACTOR_JOB_TYPE_STYLE[job.type] || CONTRACTOR_JOB_TYPE_STYLE[CONTRACTOR_JOB_TYPE.FIX];
+
   const responseHtml =
     job.status === CONTRACTOR_JOB_STATUS.CONFIRMED
-      ? job.type === CONTRACTOR_JOB_TYPE.FIX
+      ? isFixLike
         ? `<div class="meta" style="margin-top:8px;">📅 ${T.contractorSiteVisitDateLabel}: ${formatDateThai(job.siteVisitDate)}</div>
-           <div class="meta">${T.contractorRepairDaysLabel}: ${job.repairDays ?? "-"}</div>`
-        : `<div class="meta" style="margin-top:8px;">${T.contractorQuoteDaysLabel}: ${job.quoteDays ?? "-"}</div>
-           <div class="meta">${T.contractorQuotePriceLabel}: ฿${Number(job.quotePrice || 0).toLocaleString("th-TH")}</div>
-           ${job.quoteNote ? `<div class="meta">${T.contractorQuoteNoteLabel}: ${escapeHtml(job.quoteNote)}</div>` : ""}`
+           <div class="meta">⏱️ ${T.contractorRepairDaysLabel}: ${job.repairDays ?? "-"}</div>
+           ${job.type === CONTRACTOR_JOB_TYPE.FIX && job.repairPrice != null ? `<div class="meta">💰 ${T.contractorRepairPriceLabel}: ฿${Number(job.repairPrice || 0).toLocaleString("th-TH")}</div>` : ""}`
+        : `<div class="meta" style="margin-top:8px;">⏱️ ${T.contractorQuoteDaysLabel}: ${job.quoteDays ?? "-"}</div>
+           <div class="meta">💰 ${T.contractorQuotePriceLabel}: ฿${Number(job.quotePrice || 0).toLocaleString("th-TH")}</div>
+           ${job.quoteNote ? `<div class="meta">📝 ${T.contractorQuoteNoteLabel}: ${escapeHtml(job.quoteNote)}</div>` : ""}`
+      : "";
+
+  const defectBanner =
+    job.type === CONTRACTOR_JOB_TYPE.DEFECT && job.defectRound
+      ? `<div class="card" style="background:#fee2e2; border:1px solid #fca5a5; color:#991b1b; font-weight:700; margin-bottom:12px;">
+          ⚠️ ${T.contractorDefectRoundPrefix} ${escapeHtml(String(job.defectRound))}
+        </div>`
       : "";
 
   let actionHtml = "";
@@ -82,14 +93,15 @@ function render() {
   }
 
   contentEl.innerHTML = `
-    <span class="badge" style="background:#e0e7ff; color:#3730a3; margin-bottom:10px;">${jobTypeTri(job.type)}</span>
+    ${defectBanner}
+    <span class="badge" style="background:${typeStyle.bg}; color:${typeStyle.text}; border:1px solid ${typeStyle.border}; font-weight:700; margin-bottom:10px;">${typeStyle.icon} ${jobTypeTri(job.type)}</span>
     <h3 style="margin:8px 0 4px;">${escapeHtml(job.siteName || job.project || "-")}</h3>
-    ${job.project ? `<div class="meta">Project / โปรเจกต์ / 项目: ${escapeHtml(job.project)}</div>` : ""}
-    ${job.contractorName ? `<div class="meta">Contractor / ผู้รับเหมา / 承包商: ${escapeHtml(job.contractorName)}</div>` : ""}
+    ${job.project ? `<div class="meta">📍 Project / โปรเจกต์ / 项目: ${escapeHtml(job.project)}</div>` : ""}
+    ${job.contractorName ? `<div class="meta">👷 Contractor / ผู้รับเหมา / 承包商: ${escapeHtml(job.contractorName)}</div>` : ""}
     <div class="meta" style="margin-top:6px;">Job status / สถานะงาน / 工程状态: ${contractorJobStatusTri(job.status)}</div>
     <div class="desc" style="margin-top:10px;">${escapeHtml(job.description || "")}</div>
     ${responseHtml}
-    ${photosHtml ? `<div class="meta" style="margin-top:12px;">Photos / รูปภาพ / 照片</div><div class="ticket-thumbs">${photosHtml}</div>` : ""}
+    ${photosHtml ? `<div class="meta" style="margin-top:12px;">🖼️ Photos / รูปภาพ / 照片</div><div class="ticket-thumbs">${photosHtml}</div>` : ""}
     <div id="job-approval-action"></div>
   `;
 
