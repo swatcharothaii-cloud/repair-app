@@ -1016,48 +1016,123 @@ async function main() {
     const j = contractorJobs.find((x) => x.id === id);
     if (!j) return;
     const typeStyle = CONTRACTOR_JOB_TYPE_STYLE[j.type] || CONTRACTOR_JOB_TYPE_STYLE[CONTRACTOR_JOB_TYPE.FIX];
-    const priceLine =
+    const statusStyle = CONTRACTOR_JOB_STATUS_STYLE[j.status] || CONTRACTOR_JOB_STATUS_STYLE[CONTRACTOR_JOB_STATUS.WAITING];
+    const dash = `<span class="dn-empty-note">-</span>`;
+    const val = (v) => (v === null || v === undefined || v === "" ? dash : escapeHtmlGlobal(String(v)));
+    // Firestore Timestamp (real: has .toDate(); mock harness: plain {value: isoString}) → safe date string
+    const formatTs = (ts) => {
+      if (!ts) return dash;
+      const d = typeof ts.toDate === "function" ? ts.toDate() : ts.value ? ts.value : ts;
+      const out = formatDateThai(d);
+      return out && out !== "-" ? out : dash;
+    };
+
+    const repairDaysVal = j.repairDays ?? j.quoteDays;
+    const repairDaysDisplay = repairDaysVal != null ? `${escapeHtmlGlobal(String(repairDaysVal))} วัน` : dash;
+
+    const priceValue =
       j.type === CONTRACTOR_JOB_TYPE.QUOTE
-        ? `Price / ราคา: ฿${Number(j.quotePrice || 0).toLocaleString("th-TH")}<br>`
+        ? `฿${Number(j.quotePrice || 0).toLocaleString("th-TH")}`
         : j.type === CONTRACTOR_JOB_TYPE.FIX && j.repairPrice != null
-        ? `Price / ราคา: ฿${Number(j.repairPrice || 0).toLocaleString("th-TH")}<br>`
-        : "";
+        ? `฿${Number(j.repairPrice || 0).toLocaleString("th-TH")}`
+        : dash;
+
+    const inspectionResultHtml =
+      j.lastInspectionResult === "passed"
+        ? `<b style="color:#065f46;">✅ Passed / ผ่าน</b>`
+        : j.lastInspectionResult === "failed"
+        ? `<b style="color:#991b1b;">❌ Failed / ไม่ผ่าน (ต้องแก้ไข)</b>`
+        : dash;
+
+    // row helper: 2 label/value pairs sharing one row (4 columns)
+    const row2 = (labelA, valueA, labelB, valueB) => `
+      <tr>
+        <td class="dn-label">${labelA}</td>
+        <td class="dn-value">${valueA}</td>
+        <td class="dn-label-2">${labelB}</td>
+        <td class="dn-value">${valueB}</td>
+      </tr>`;
+    // row helper: 1 label, value spans the remaining 3 columns
+    const rowFull = (label, value) => `
+      <tr>
+        <td class="dn-label">${label}</td>
+        <td class="dn-value dn-full" colspan="3">${value}</td>
+      </tr>`;
+
+    const photosSection = (j.deliveryImages || []).length
+      ? `<div class="dn-section-title">📷 ${T.contractorDeliveryPhotosLabel || "Delivery photos / ภาพส่งมอบงาน"}</div>
+         <div class="dn-photos-wrap">
+           <div class="dn-photos-grid">
+             ${(j.deliveryImages || []).map((img) => `<img class="print-thumb" src="${img.url}">`).join("")}
+           </div>
+         </div>`
+      : "";
+
     document.getElementById("print-report").innerHTML = `
       <div class="print-report-header">
         ${COMPANY?.logo ? `<img src="${COMPANY.logo}">` : ""}
         <div class="titles">
-          <h1>${T.deliveryNoteTitle} — ${escapeHtmlGlobal(COMPANY?.nameTh || "")}</h1>
+          <h1>${escapeHtmlGlobal(COMPANY?.nameTh || "")}</h1>
           <div class="sub">${escapeHtmlGlobal(COMPANY?.nameEn || "")}</div>
         </div>
       </div>
-      <div class="print-report-meta">
-        Job No. / เลขที่งาน: ${escapeHtmlGlobal(j.jobId || "")}<br>
-        Type / ประเภทงาน: ${typeStyle.icon} ${jobTypeTri(j.type)}${j.type === CONTRACTOR_JOB_TYPE.DEFECT && j.defectRound ? ` (ครั้งที่ ${escapeHtmlGlobal(String(j.defectRound))})` : ""}<br>
-        PO Number / เลขที่ PO: ${escapeHtmlGlobal(j.poNumber || "-")}<br>
-        Project / โปรเจกต์: ${escapeHtmlGlobal(j.project || "-")}<br>
-        Site / สถานที่: ${escapeHtmlGlobal(j.siteName || "-")}<br>
-        Contractor / ผู้รับเหมา: ${escapeHtmlGlobal(j.contractorName || "-")}<br>
-        Description / รายละเอียดงาน: ${escapeHtmlGlobal(j.description || "-")}<br>
-        Site visit date / วันเข้าหน้างาน: ${formatDateThai(j.siteVisitDate)}<br>
-        Repair days / จำนวนวันซ่อม: ${j.repairDays ?? j.quoteDays ?? "-"}<br>
-        ${priceLine}
-        Delivery date / วันส่งมอบงาน: ${formatDateThai(j.deliveryDate)}<br>
-        Supervisor / ผู้ดูแลงาน: ${escapeHtmlGlobal(j.supervisorName || "-")}<br>
-        Delivery note / หมายเหตุส่งมอบ: ${escapeHtmlGlobal(j.deliveryNote || "-")}<br>
-        Inspection round / ตรวจงานครั้งที่: ${j.inspectionRound || "-"}<br>
-        Inspection result / ผลตรวจล่าสุด: ${j.lastInspectionResult === "passed" ? "✅ Passed / ผ่าน" : j.lastInspectionResult === "failed" ? "❌ Failed / ไม่ผ่าน" : "-"}<br>
-        Inspector / ผู้ตรวจงาน: ${escapeHtmlGlobal(j.lastInspectionBy || "-")}<br>
-        ${j.lastInspectionNote ? `Inspection note / หมายเหตุการตรวจ: ${escapeHtmlGlobal(j.lastInspectionNote)}<br>` : ""}
-        Status / สถานะ: ${contractorJobStatusTri(j.status)}
+
+      <div class="dn-doc">
+        <div class="dn-doc-title-bar">
+          <div class="dn-doc-title">
+            ${T.deliveryNoteTitle || "Job Delivery Note / ใบส่งมอบงาน"}
+            <span class="sub">${typeStyle.icon} ${jobTypeTri(j.type)}${j.type === CONTRACTOR_JOB_TYPE.DEFECT && j.defectRound ? ` (ครั้งที่ ${escapeHtmlGlobal(String(j.defectRound))})` : ""}</span>
+          </div>
+          <div class="dn-doc-no">
+            Job No. / เลขที่งาน
+            <b>${escapeHtmlGlobal(j.jobId || "-")}</b>
+            <span class="dn-status-badge" style="background:${statusStyle.bg}; color:${statusStyle.text};">${contractorJobStatusTri(j.status)}</span>
+          </div>
+        </div>
+
+        <div class="dn-section-title">🗂️ Job Information / ข้อมูลงาน</div>
+        <table class="dn-table">
+          ${row2("PO Number<br>เลขที่ PO", `<b>${val(j.poNumber)}</b>`, "Project<br>โปรเจกต์", val(j.project))}
+          ${row2("Site<br>สถานที่", val(j.siteName), "Contractor<br>ผู้รับเหมา", val(j.contractorName))}
+          ${rowFull("Description<br>รายละเอียดงาน", val(j.description))}
+        </table>
+
+        <div class="dn-section-title">📅 Schedule &amp; Price / กำหนดการและราคา</div>
+        <table class="dn-table">
+          ${row2("Site visit date<br>วันเข้าหน้างาน", j.siteVisitDate ? formatDateThai(j.siteVisitDate) : dash, "Repair days<br>จำนวนวันซ่อม", repairDaysDisplay)}
+          ${rowFull("Price<br>ราคา", `<b>${priceValue}</b>`)}
+        </table>
+
+        <div class="dn-section-title">📦 Delivery / การส่งมอบงาน</div>
+        <table class="dn-table">
+          ${row2("Delivery date<br>วันส่งมอบงาน", j.deliveryDate ? formatDateThai(j.deliveryDate) : dash, "Supervisor<br>ผู้ดูแลงาน", val(j.supervisorName))}
+          ${rowFull("Delivery note<br>หมายเหตุส่งมอบ", val(j.deliveryNote))}
+        </table>
+
+        <div class="dn-section-title">🔍 Inspection &amp; Acceptance / การตรวจรับงาน</div>
+        <table class="dn-table">
+          ${row2("Inspection round<br>ตรวจงานครั้งที่", val(j.inspectionRound), "Inspection result<br>ผลตรวจล่าสุด", inspectionResultHtml)}
+          ${row2("Inspector<br>ผู้ตรวจงาน", val(j.lastInspectionBy), "Inspected date<br>วันที่ตรวจ", formatTs(j.lastInspectionAt))}
+          ${j.lastInspectionNote ? rowFull("Inspection note<br>หมายเหตุการตรวจ", val(j.lastInspectionNote)) : ""}
+        </table>
+
+        ${photosSection}
+
+        <div class="dn-sign-grid">
+          <div class="dn-sign-block">
+            <div class="dn-sign-line">${j.supervisorName ? escapeHtmlGlobal(j.supervisorName) : "&nbsp;"}</div>
+            <div class="dn-sign-role">ผู้ส่งมอบงาน / Delivered by</div>
+          </div>
+          <div class="dn-sign-block">
+            <div class="dn-sign-line">${j.lastInspectionBy ? escapeHtmlGlobal(j.lastInspectionBy) : "&nbsp;"}</div>
+            <div class="dn-sign-role">ผู้ตรวจรับงาน / Inspected by</div>
+          </div>
+          <div class="dn-sign-block">
+            <div class="dn-sign-line">&nbsp;</div>
+            <div class="dn-sign-role">ผู้อนุมัติ / Approved by</div>
+          </div>
+        </div>
       </div>
-      ${
-        (j.deliveryImages || []).length
-          ? `<div class="print-report-meta" style="margin-top:0;">Delivery photos / ภาพส่งมอบงาน:</div>
-             <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
-               ${(j.deliveryImages || []).map((img) => `<img class="print-thumb" src="${img.url}">`).join("")}
-             </div>`
-          : ""
-      }
     `;
     showToast(T.pdfPrintHint, 5000);
     setTimeout(() => window.print(), 300);
