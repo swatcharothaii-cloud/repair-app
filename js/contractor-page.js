@@ -76,9 +76,19 @@ function render() {
     const deliveryPhotosHtml = (job.deliveryImages || [])
       .map((img, i) => `<img src="${img.url}" data-delivery-idx="${i}" title="${T.clickToViewPhoto || ""}">`)
       .join("");
+    // ถ้าตรวจงานครั้งก่อนไม่ผ่าน (deliverySubmitted ถูกรีเซ็ตเป็น false แล้ว รอส่งใหม่) แสดงแบนเนอร์เตือนไว้ก่อนฟอร์ม
+    const inspectionFailedBanner =
+      !job.deliverySubmitted && job.inspectionRound > 0 && job.lastInspectionResult === "failed"
+        ? `<div class="card" style="background:#fee2e2; border:1px solid #fca5a5; color:#991b1b; margin-top:16px;">
+            <strong>⚠️ ${T.msgInspectionFailedResubmit}</strong>
+            <div class="meta" style="margin-top:6px;">${T.inspectionRoundLabel} ${job.inspectionRound}${job.lastInspectionBy ? ` · ${T.lastInspectedByPrefix}: ${escapeHtml(job.lastInspectionBy)}` : ""}</div>
+            ${job.lastInspectionNote ? `<div class="meta">📝 ${escapeHtml(job.lastInspectionNote)}</div>` : ""}
+          </div>`
+        : "";
     let deliveryHtml = "";
     if (!job.deliverySubmitted) {
       deliveryHtml = `
+        ${inspectionFailedBanner}
         <div class="card" style="margin-top:16px;">
           <strong>${T.contractorSubmitDeliveryTitle}</strong>
           <div class="field" style="margin-top:10px;">
@@ -126,6 +136,7 @@ function render() {
         ${job.poNumber ? `<div class="meta" style="margin-top:8px;">🧾 ${T.contractorPoLabel}: ${escapeHtml(job.poNumber)}</div>` : ""}
         <div class="meta" style="margin-top:8px;">📅 ${T.contractorDeliveryDateLabel}: ${formatDateThai(job.deliveryDate)}</div>
         ${job.supervisorName ? `<div class="meta">🙋 ${T.contractorSupervisorNameLabel}: ${escapeHtml(job.supervisorName)}</div>` : ""}
+        ${job.inspectionRound ? `<div class="meta">🔍 ${T.inspectionRoundLabel} ${job.inspectionRound}${job.lastInspectionBy ? ` · ${T.lastInspectedByPrefix}: ${escapeHtml(job.lastInspectionBy)}` : ""}</div>` : ""}
         ${doneDeliveryPhotosHtml ? `<div class="meta" style="margin-top:8px;">🖼️ ${T.contractorDeliveryPhotosLabel}</div><div class="ticket-thumbs">${doneDeliveryPhotosHtml}</div>` : ""}
       </div>`;
   } else {

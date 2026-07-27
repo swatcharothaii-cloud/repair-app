@@ -63,6 +63,12 @@ export async function addContractorJob(data) {
     deliveryAccepted: false, // ทีมงานภายในกด "ตรวจรับงาน" แล้วหรือยัง
     deliveryAcceptedBy: "",
     deliveryAcceptedAt: null,
+    // ---- ตรวจรับงาน: รอบที่ตรวจ + ผลตรวจล่าสุด + ผู้ตรวจงานลงชื่อ ----
+    inspectionRound: 0, // เพิ่มขึ้นทุกครั้งที่มีการตรวจ (ไม่ว่าผ่านหรือไม่ผ่าน)
+    lastInspectionResult: "", // "passed" | "failed"
+    lastInspectionBy: "", // ชื่อผู้ตรวจงาน (พิมพ์เองตอนกดตรวจ)
+    lastInspectionNote: "", // เหตุผลที่ไม่ผ่าน (ถ้ามี)
+    lastInspectionAt: null,
   });
   return { id: ref.id, jobId };
 }
@@ -200,13 +206,33 @@ export async function submitDelivery(id, { deliveryDate, deliveryNote, superviso
   });
 }
 
-// ทีมงานภายในกด "ตรวจรับงาน" หลังผู้รับเหมาแจ้งส่งมอบงานแล้ว — ปิดงานเป็นเสร็จสิ้น
-export async function acceptDelivery(id, acceptedByName) {
+// ทีมงานภายในตรวจงานที่ผู้รับเหมาส่งมอบมา — ผลตรวจมี 2 แบบ: "ผ่าน" (ปิดงานเสร็จสิ้น) หรือ "ไม่ผ่าน" (ให้ส่งมอบงานใหม่)
+// round: เลขรอบที่ตรวจ (นับต่อจากรอบก่อนหน้า ส่งมาจากฝั่งแอดมิน เพื่อไม่ต้องอ่านข้อมูลซ้ำก่อนเขียน)
+// inspectorName: ชื่อผู้ตรวจงาน (พิมพ์เองตอนกดตรวจ ไม่ผูกกับชื่อแอดมินที่ล็อกอินอยู่ เพราะอาจเป็นคนละคนกัน)
+export async function passDeliveryInspection(id, { round, inspectorName, note }) {
   await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), {
+    inspectionRound: round,
+    lastInspectionResult: "passed",
+    lastInspectionBy: (inspectorName || "").trim(),
+    lastInspectionNote: (note || "").trim(),
+    lastInspectionAt: serverTimestamp(),
     deliveryAccepted: true,
-    deliveryAcceptedBy: (acceptedByName || "").trim(),
+    deliveryAcceptedBy: (inspectorName || "").trim(),
     deliveryAcceptedAt: serverTimestamp(),
     status: CONTRACTOR_JOB_STATUS.DONE,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+export async function failDeliveryInspection(id, { round, inspectorName, note }) {
+  await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), {
+    inspectionRound: round,
+    lastInspectionResult: "failed",
+    lastInspectionBy: (inspectorName || "").trim(),
+    lastInspectionNote: (note || "").trim(),
+    lastInspectionAt: serverTimestamp(),
+    // รีเซ็ตให้ผู้รับเหมาส่งมอบงานใหม่อีกครั้ง (deliveryAccepted ยังเป็น false อยู่แล้ว ไม่ต้องแก้)
+    deliverySubmitted: false,
     updatedAt: serverTimestamp(),
   });
 }

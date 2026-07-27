@@ -284,6 +284,16 @@ export const T = {
   contractorSupervisorNameLabel: tri("Supervisor / person in charge", "ชื่อผู้ดูแลงาน", "负责人姓名"),
   contractorDeliveryPhotosLabel: tri("Delivery photos (up to 20)", "ภาพส่งมอบงาน (สูงสุด 20 ภาพ)", "交付照片（最多20张）"),
   msgMaxDeliveryImages: tri("Up to 20 delivery photos", "แนบภาพส่งมอบงานได้สูงสุด 20 ภาพ", "最多可上传20张交付照片"),
+
+  // -------- ตรวจรับงาน: รอบตรวจ + ผู้ตรวจงานลงชื่อ --------
+  btnInspectionPass: tri("✅ Passed", "✅ ผ่าน", "✅ 通过"),
+  btnInspectionFail: tri("❌ Failed — needs rework", "❌ ไม่ผ่าน ต้องแก้ไข", "❌ 不合格，需整改"),
+  promptInspectorName: tri("Inspector name:", "ชื่อผู้ตรวจงาน:", "验收人姓名："),
+  promptInspectionFailNote: tri("Reason for failing (optional):", "เหตุผลที่ไม่ผ่าน (ถ้ามี):", "不合格原因（可选）："),
+  inspectionRoundLabel: tri("Inspection round", "ตรวจงานครั้งที่", "验收次数"),
+  lastInspectedByPrefix: tri("Inspected by", "ผู้ตรวจงาน", "验收人"),
+  msgInspectionFailedResubmit: tri("Inspection did not pass — please resubmit delivery", "ตรวจงานไม่ผ่าน กรุณาส่งมอบงานใหม่", "验收不合格，请重新提交交付"),
+  msgInspectorNameRequired: tri("Please enter the inspector's name", "กรุณากรอกชื่อผู้ตรวจงาน", "请输入验收人姓名"),
   btnAddContractorJob: tri("+ Send job to contractor", "+ ส่งงานให้ผู้รับเหมา", "+ 发送工程给承包商"),
   contractorJobTypeLabel: tri("Job type", "ประเภทงาน", "工程类型"),
   contractorLabel: tri("Contractor", "ผู้รับเหมา", "承包商"),

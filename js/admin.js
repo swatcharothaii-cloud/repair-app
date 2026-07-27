@@ -441,7 +441,8 @@ async function main() {
     sendJobForApproval,
     deleteContractorJob,
     setPoNumber,
-    acceptDelivery,
+    passDeliveryInspection,
+    failDeliveryInspection,
   } = await import("./contractor-jobs.js");
 
   let contractors = [];
@@ -864,13 +865,20 @@ async function main() {
             ? `<div class="hint" style="font-weight:600;">🧾 ${escapeHtmlGlobal(j.poNumber)} <button class="btn btn-outline btn-sm cj-set-po-btn" data-id="${j.id}" style="padding:1px 6px; font-size:11px;">✏️</button></div>`
             : `<button class="btn btn-outline btn-sm cj-set-po-btn" data-id="${j.id}">${T.btnSetPoNumber}</button>`;
           const photoCountBadge = (j.deliveryImages || []).length ? ` 🖼️${j.deliveryImages.length}` : "";
+          const roundBadge = j.inspectionRound ? `<div class="hint" style="margin-top:2px;">🔍 ${T.inspectionRoundLabel} ${j.inspectionRound}${j.lastInspectionResult === "failed" ? " ❌" : ""}</div>` : "";
           let deliveryLine = `<div class="hint" style="margin-top:4px;">- ${T.contractorSubmitDeliveryTitle}</div>`;
           if (j.deliveryAccepted) {
-            deliveryLine = `<div class="hint" style="margin-top:4px; color:#1e40af; font-weight:600;">✅ ${formatDateThai(j.deliveryDate)}${photoCountBadge}</div>`;
+            deliveryLine = `<div class="hint" style="margin-top:4px; color:#1e40af; font-weight:600;">✅ ${formatDateThai(j.deliveryDate)}${photoCountBadge}</div>${roundBadge}`;
           } else if (j.deliverySubmitted) {
             deliveryLine = `
-              <div class="hint" style="margin-top:4px; color:#92400e;">⏳ ${formatDateThai(j.deliveryDate)}${photoCountBadge}</div>
-              <button class="btn btn-sm cj-accept-delivery-btn" data-id="${j.id}" style="background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; margin-top:4px;">${T.btnAcceptDelivery}</button>`;
+              <div class="hint" style="margin-top:4px; color:#92400e;">⏳ ${formatDateThai(j.deliveryDate)}${photoCountBadge}</div>${roundBadge}
+              <div style="display:flex; gap:4px; margin-top:4px;">
+                <button class="btn btn-sm cj-pass-delivery-btn" data-id="${j.id}" style="background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; padding:2px 6px; font-size:11px;">${T.btnInspectionPass}</button>
+                <button class="btn btn-sm cj-fail-delivery-btn" data-id="${j.id}" style="background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; padding:2px 6px; font-size:11px;">${T.btnInspectionFail}</button>
+              </div>`;
+          } else if (j.inspectionRound > 0) {
+            // ตรวจไม่ผ่านมาก่อน กำลังรอผู้รับเหมาส่งมอบงานใหม่
+            deliveryLine = `<div class="hint" style="margin-top:4px; color:#991b1b;">❌ ${T.msgInspectionFailedResubmit}</div>${roundBadge}`;
           }
           deliveryCell = poLine + deliveryLine;
         }
@@ -949,16 +957,48 @@ async function main() {
         }
       });
     });
-    tbody.querySelectorAll(".cj-accept-delivery-btn").forEach((btn) => {
+    tbody.querySelectorAll(".cj-pass-delivery-btn").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const id = btn.dataset.id;
         const j = contractorJobs.find((x) => x.id === id);
         if (!j) return;
-        if (!confirm(`Confirm delivery accepted for job "${j.jobId || id}"? / ยืนยันตรวจรับงาน "${j.jobId || id}" แล้ว?`)) {
+        const inspectorName = prompt(T.promptInspectorName, currentIdentity?.name || "");
+        if (inspectorName === null) return; // ผู้ใช้กดยกเลิก
+        if (!inspectorName.trim()) {
+          showToast(T.msgInspectorNameRequired);
+          return;
+        }
+        if (!confirm(`Confirm delivery passed for job "${j.jobId || id}"? / ยืนยันว่างาน "${j.jobId || id}" ตรวจผ่านแล้ว?`)) {
           return;
         }
         try {
-          await acceptDelivery(id, currentIdentity?.name || "");
+          const round = (j.inspectionRound || 0) + 1;
+          await passDeliveryInspection(id, { round, inspectorName });
+          showToast(T.msgCategorySaved);
+        } catch (e) {
+          console.error(e);
+          showToast(T.errorPrefix + e.message);
+        }
+      });
+    });
+    tbody.querySelectorAll(".cj-fail-delivery-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.id;
+        const j = contractorJobs.find((x) => x.id === id);
+        if (!j) return;
+        const inspectorName = prompt(T.promptInspectorName, currentIdentity?.name || "");
+        if (inspectorName === null) return; // ผู้ใช้กดยกเลิก
+        if (!inspectorName.trim()) {
+          showToast(T.msgInspectorNameRequired);
+          return;
+        }
+        const note = prompt(T.promptInspectionFailNote, "") || "";
+        if (!confirm(`Mark delivery as failed for job "${j.jobId || id}"? Contractor will need to resubmit. / ยืนยันว่างาน "${j.jobId || id}" ตรวจไม่ผ่าน? ผู้รับเหมาต้องส่งมอบงานใหม่`)) {
+          return;
+        }
+        try {
+          const round = (j.inspectionRound || 0) + 1;
+          await failDeliveryInspection(id, { round, inspectorName, note });
           showToast(T.msgCategorySaved);
         } catch (e) {
           console.error(e);
@@ -1004,7 +1044,10 @@ async function main() {
         Delivery date / วันส่งมอบงาน: ${formatDateThai(j.deliveryDate)}<br>
         Supervisor / ผู้ดูแลงาน: ${escapeHtmlGlobal(j.supervisorName || "-")}<br>
         Delivery note / หมายเหตุส่งมอบ: ${escapeHtmlGlobal(j.deliveryNote || "-")}<br>
-        Delivery accepted / ตรวจรับงานแล้ว: ${j.deliveryAccepted ? `✅ Yes / ใช่ (${escapeHtmlGlobal(j.deliveryAcceptedBy || "-")}, ${formatDateThai(j.deliveryAcceptedAt?.toDate ? j.deliveryAcceptedAt.toDate().toISOString().slice(0, 10) : "")})` : "❌ Not yet / ยังไม่ตรวจรับ"}<br>
+        Inspection round / ตรวจงานครั้งที่: ${j.inspectionRound || "-"}<br>
+        Inspection result / ผลตรวจล่าสุด: ${j.lastInspectionResult === "passed" ? "✅ Passed / ผ่าน" : j.lastInspectionResult === "failed" ? "❌ Failed / ไม่ผ่าน" : "-"}<br>
+        Inspector / ผู้ตรวจงาน: ${escapeHtmlGlobal(j.lastInspectionBy || "-")}<br>
+        ${j.lastInspectionNote ? `Inspection note / หมายเหตุการตรวจ: ${escapeHtmlGlobal(j.lastInspectionNote)}<br>` : ""}
         Status / สถานะ: ${contractorJobStatusTri(j.status)}
       </div>
       ${
