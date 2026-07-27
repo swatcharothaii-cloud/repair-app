@@ -863,12 +863,13 @@ async function main() {
           const poLine = j.poNumber
             ? `<div class="hint" style="font-weight:600;">🧾 ${escapeHtmlGlobal(j.poNumber)} <button class="btn btn-outline btn-sm cj-set-po-btn" data-id="${j.id}" style="padding:1px 6px; font-size:11px;">✏️</button></div>`
             : `<button class="btn btn-outline btn-sm cj-set-po-btn" data-id="${j.id}">${T.btnSetPoNumber}</button>`;
+          const photoCountBadge = (j.deliveryImages || []).length ? ` 🖼️${j.deliveryImages.length}` : "";
           let deliveryLine = `<div class="hint" style="margin-top:4px;">- ${T.contractorSubmitDeliveryTitle}</div>`;
           if (j.deliveryAccepted) {
-            deliveryLine = `<div class="hint" style="margin-top:4px; color:#1e40af; font-weight:600;">✅ ${formatDateThai(j.deliveryDate)}</div>`;
+            deliveryLine = `<div class="hint" style="margin-top:4px; color:#1e40af; font-weight:600;">✅ ${formatDateThai(j.deliveryDate)}${photoCountBadge}</div>`;
           } else if (j.deliverySubmitted) {
             deliveryLine = `
-              <div class="hint" style="margin-top:4px; color:#92400e;">⏳ ${formatDateThai(j.deliveryDate)}</div>
+              <div class="hint" style="margin-top:4px; color:#92400e;">⏳ ${formatDateThai(j.deliveryDate)}${photoCountBadge}</div>
               <button class="btn btn-sm cj-accept-delivery-btn" data-id="${j.id}" style="background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; margin-top:4px;">${T.btnAcceptDelivery}</button>`;
           }
           deliveryCell = poLine + deliveryLine;
@@ -1001,10 +1002,19 @@ async function main() {
         Repair days / จำนวนวันซ่อม: ${j.repairDays ?? j.quoteDays ?? "-"}<br>
         ${priceLine}
         Delivery date / วันส่งมอบงาน: ${formatDateThai(j.deliveryDate)}<br>
+        Supervisor / ผู้ดูแลงาน: ${escapeHtmlGlobal(j.supervisorName || "-")}<br>
         Delivery note / หมายเหตุส่งมอบ: ${escapeHtmlGlobal(j.deliveryNote || "-")}<br>
         Delivery accepted / ตรวจรับงานแล้ว: ${j.deliveryAccepted ? `✅ Yes / ใช่ (${escapeHtmlGlobal(j.deliveryAcceptedBy || "-")}, ${formatDateThai(j.deliveryAcceptedAt?.toDate ? j.deliveryAcceptedAt.toDate().toISOString().slice(0, 10) : "")})` : "❌ Not yet / ยังไม่ตรวจรับ"}<br>
         Status / สถานะ: ${contractorJobStatusTri(j.status)}
       </div>
+      ${
+        (j.deliveryImages || []).length
+          ? `<div class="print-report-meta" style="margin-top:0;">Delivery photos / ภาพส่งมอบงาน:</div>
+             <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:8px;">
+               ${(j.deliveryImages || []).map((img) => `<img class="print-thumb" src="${img.url}">`).join("")}
+             </div>`
+          : ""
+      }
     `;
     showToast(T.pdfPrintHint, 5000);
     setTimeout(() => window.print(), 300);

@@ -56,6 +56,8 @@ export async function addContractorJob(data) {
     poNumber: "", // เลขที่ใบสั่งซื้อ — แอดมินกรอกเองทีหลัง (ปกติหลังตกลงราคา/วันแล้ว)
     deliveryDate: "", // วันที่ผู้รับเหมาแจ้งว่าส่งมอบงานจริง
     deliveryNote: "",
+    supervisorName: "", // ชื่อผู้ดูแลงาน (ฝั่งผู้รับเหมา) ที่รับผิดชอบตอนส่งมอบงานนี้
+    deliveryImages: [], // ภาพหน้างานตอนส่งมอบ (แนบได้สูงสุด 20 ภาพ แยกจากภาพก่อนซ่อมของงาน)
     deliverySubmitted: false,
     deliverySubmittedAt: null,
     deliveryAccepted: false, // ทีมงานภายในกด "ตรวจรับงาน" แล้วหรือยัง
@@ -186,10 +188,12 @@ export async function setPoNumber(id, poNumber) {
 }
 
 // ผู้รับเหมาแจ้งส่งมอบงานจริง (ผ่านลิงก์สาธารณะ contractor.html เดิม ไม่ต้องล็อกอิน)
-export async function submitDelivery(id, { deliveryDate, deliveryNote }) {
+export async function submitDelivery(id, { deliveryDate, deliveryNote, supervisorName, deliveryImages }) {
   await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), {
     deliveryDate,
     deliveryNote: (deliveryNote || "").trim(),
+    supervisorName: (supervisorName || "").trim(),
+    deliveryImages: deliveryImages || [],
     deliverySubmitted: true,
     deliverySubmittedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),

@@ -1,7 +1,11 @@
-import { COMPANY, CONTRACTOR_JOB_TYPE, CONTRACTOR_JOB_TYPE_STYLE, CONTRACTOR_JOB_STATUS } from "./config.js";
+import { COMPANY, CONTRACTOR_JOB_TYPE, CONTRACTOR_JOB_TYPE_STYLE, CONTRACTOR_JOB_STATUS, MAX_IMAGE_MB } from "./config.js";
 import { renderCompanyBrandBar, showToast, formatDateThai, todayStr } from "./utils.js";
 import { T, jobTypeTri, contractorJobStatusTri } from "./i18n.js";
 import { watchContractorJob, respondFixJob, acceptQuoteJob, rejectJob, submitDelivery } from "./contractor-jobs.js";
+import { compressImageToDataUrl } from "./image-compress.js";
+
+const MAX_DELIVERY_IMAGES = 20; // ภาพส่งมอบงาน แนบได้มากกว่าภาพก่อนซ่อมทั่วไป (ซึ่งจำกัดที่ MAX_IMAGES/5 ภาพ)
+let deliveryImages = []; // [{url}] เก็บระหว่างกรอกฟอร์มส่งมอบงาน ก่อนกดส่ง
 
 renderCompanyBrandBar("brand-bar", COMPANY);
 
@@ -69,6 +73,9 @@ function render() {
           </div>`;
 
     // หลังตกลงราคา/วันแล้ว ให้ผู้รับเหมาแจ้ง "ส่งมอบงาน" ได้ (ครั้งเดียว) แล้วรอทีมงานภายในตรวจรับ
+    const deliveryPhotosHtml = (job.deliveryImages || [])
+      .map((img, i) => `<img src="${img.url}" data-delivery-idx="${i}" title="${T.clickToViewPhoto || ""}">`)
+      .join("");
     let deliveryHtml = "";
     if (!job.deliverySubmitted) {
       deliveryHtml = `
@@ -79,8 +86,20 @@ function render() {
             <input type="date" id="f-delivery-date" value="${todayStr()}">
           </div>
           <div class="field">
+            <label>🙋 ${T.contractorSupervisorNameLabel}</label>
+            <input type="text" id="f-supervisor-name" placeholder="e.g. K.Somchai">
+          </div>
+          <div class="field">
             <label>📝 ${T.contractorDeliveryNoteLabel}</label>
             <textarea id="f-delivery-note" rows="2"></textarea>
+          </div>
+          <div class="field">
+            <label>🖼️ ${T.contractorDeliveryPhotosLabel}</label>
+            <div class="img-preview-grid" id="f-delivery-image-previews"></div>
+            <div class="upload-box" id="f-delivery-upload-box">
+              <input type="file" id="f-delivery-image-input" accept="image/*" multiple style="display:none">
+              📷 Tap to add delivery photo / แตะเพื่อเพิ่มภาพส่งมอบงาน / 点击添加交付照片
+            </div>
           </div>
           <button class="btn btn-primary btn-block" id="submit-delivery-btn">${T.contractorSubmitDeliveryBtn}</button>
         </div>`;
@@ -89,18 +108,25 @@ function render() {
         <div class="card" style="background:#fef3c7; border:1px solid #fde68a; margin-top:16px;">
           <strong>⏳ ${T.contractorDeliverySubmittedMsg}</strong>
           <div class="meta" style="margin-top:8px;">📅 ${T.contractorDeliveryDateLabel}: ${formatDateThai(job.deliveryDate)}</div>
+          ${job.supervisorName ? `<div class="meta">🙋 ${T.contractorSupervisorNameLabel}: ${escapeHtml(job.supervisorName)}</div>` : ""}
           ${job.deliveryNote ? `<div class="meta">📝 ${escapeHtml(job.deliveryNote)}</div>` : ""}
+          ${deliveryPhotosHtml ? `<div class="meta" style="margin-top:8px;">🖼️ ${T.contractorDeliveryPhotosLabel}</div><div class="ticket-thumbs">${deliveryPhotosHtml}</div>` : ""}
         </div>`;
     }
     actionHtml = confirmedDetailsHtml + deliveryHtml;
   } else if (job.status === CONTRACTOR_JOB_STATUS.REJECTED) {
     actionHtml = `<div class="card" style="background:#fee2e2; border:1px solid #fca5a5; margin-top:16px;"><strong>❌ ${T.contractorRejectedMsg}</strong></div>`;
   } else if (job.status === CONTRACTOR_JOB_STATUS.DONE) {
+    const doneDeliveryPhotosHtml = (job.deliveryImages || [])
+      .map((img, i) => `<img src="${img.url}" data-delivery-idx="${i}" title="${T.clickToViewPhoto || ""}">`)
+      .join("");
     actionHtml = `
       <div class="card" style="background:#dbeafe; border:1px solid #93c5fd; margin-top:16px;">
         <strong>🏁 ${T.contractorDeliveryAcceptedMsg}</strong>
         ${job.poNumber ? `<div class="meta" style="margin-top:8px;">🧾 ${T.contractorPoLabel}: ${escapeHtml(job.poNumber)}</div>` : ""}
         <div class="meta" style="margin-top:8px;">📅 ${T.contractorDeliveryDateLabel}: ${formatDateThai(job.deliveryDate)}</div>
+        ${job.supervisorName ? `<div class="meta">🙋 ${T.contractorSupervisorNameLabel}: ${escapeHtml(job.supervisorName)}</div>` : ""}
+        ${doneDeliveryPhotosHtml ? `<div class="meta" style="margin-top:8px;">🖼️ ${T.contractorDeliveryPhotosLabel}</div><div class="ticket-thumbs">${doneDeliveryPhotosHtml}</div>` : ""}
       </div>`;
   } else {
     actionHtml = `<div class="card" style="background:#dbeafe; border:1px solid #93c5fd; margin-top:16px;"><strong>🏁 ${contractorJobStatusTri(job.status)}</strong></div>`;
@@ -118,6 +144,7 @@ function render() {
     <span class="badge" style="background:${typeStyle.bg}; color:${typeStyle.text}; border:1px solid ${typeStyle.border}; font-weight:700; margin-bottom:10px;">${typeStyle.icon} ${jobTypeTri(job.type)}</span>
     <h3 style="margin:8px 0 4px;">${escapeHtml(job.siteName || job.project || "-")}</h3>
     ${job.project ? `<div class="meta">📍 Project / โปรเจกต์ / 项目: ${escapeHtml(job.project)}</div>` : ""}
+    ${job.contractorName ? `<div class="meta">👷 ${T.contractorLabel}: ${escapeHtml(job.contractorName)}</div>` : ""}
     <div class="desc" style="margin-top:10px;">${escapeHtml(job.description || "")}</div>
     ${photosHtml ? `<div class="meta" style="margin-top:12px;">🖼️ Photos / รูปภาพ / 照片</div><div class="ticket-thumbs">${photosHtml}</div>` : ""}
     <div id="job-action"></div>
@@ -128,7 +155,30 @@ function render() {
   });
 
   document.getElementById("job-action").innerHTML = actionHtml;
+  // ภาพส่งมอบงาน (deliveryImages) เป็นแกลเลอรีคนละชุดกับภาพก่อนซ่อม (job.images) ด้านบน — ผูก lightbox แยกกัน
+  document.querySelectorAll("[data-delivery-idx]").forEach((img) => {
+    img.addEventListener("click", () => openLightbox(job.deliveryImages, Number(img.dataset.deliveryIdx)));
+  });
   wireActionHandlers(job);
+  if (!job.deliverySubmitted) renderDeliveryImagePreviews();
+}
+
+function renderDeliveryImagePreviews() {
+  const el = document.getElementById("f-delivery-image-previews");
+  const uploadBox = document.getElementById("f-delivery-upload-box");
+  if (!el) return; // ฟอร์มส่งมอบงานไม่ได้แสดงอยู่ตอนนี้
+  el.innerHTML = deliveryImages
+    .map(
+      (img, i) => `<div class="img-preview"><img src="${img.url}"><button type="button" class="remove-btn" data-idx="${i}">✕</button></div>`
+    )
+    .join("");
+  el.querySelectorAll(".remove-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      deliveryImages.splice(Number(btn.dataset.idx), 1);
+      renderDeliveryImagePreviews();
+    });
+  });
+  if (uploadBox) uploadBox.style.display = deliveryImages.length >= MAX_DELIVERY_IMAGES ? "none" : "block";
 }
 
 function acceptRejectGateHtml() {
@@ -230,22 +280,54 @@ function wireActionHandlers(job) {
     });
   }
 
+  const deliveryImageInput = document.getElementById("f-delivery-image-input");
+  const deliveryUploadBox = document.getElementById("f-delivery-upload-box");
+  if (deliveryImageInput && deliveryUploadBox) {
+    deliveryUploadBox.addEventListener("click", () => deliveryImageInput.click());
+    deliveryImageInput.addEventListener("change", async (e) => {
+      const files = Array.from(e.target.files || []);
+      e.target.value = "";
+      for (const file of files) {
+        if (deliveryImages.length >= MAX_DELIVERY_IMAGES) {
+          showToast(T.msgMaxDeliveryImages);
+          break;
+        }
+        if (file.size > MAX_IMAGE_MB * 1024 * 1024) {
+          showToast(`File too large / ไฟล์ใหญ่เกินไป (${MAX_IMAGE_MB}MB) / 文件过大: ${file.name}`);
+          continue;
+        }
+        try {
+          const url = await compressImageToDataUrl(file);
+          deliveryImages.push({ url });
+        } catch (err) {
+          console.error(err);
+        }
+      }
+      renderDeliveryImagePreviews();
+    });
+  }
+
   const submitDeliveryBtn = document.getElementById("submit-delivery-btn");
   if (submitDeliveryBtn) {
     submitDeliveryBtn.addEventListener("click", async () => {
       const deliveryDate = document.getElementById("f-delivery-date").value;
       const deliveryNote = document.getElementById("f-delivery-note").value;
-      if (!deliveryDate) {
-        showToast("Please select a delivery date / กรุณาเลือกวันที่ส่งมอบงาน / 请选择交付日期");
+      const supervisorName = document.getElementById("f-supervisor-name").value;
+      if (!deliveryDate || !supervisorName.trim()) {
+        showToast("Please fill in all fields / กรุณากรอกข้อมูลให้ครบ / 请填写所有字段");
         return;
       }
       if (!confirm(T.contractorSubmitDeliveryBtn + "?")) return;
+      submitDeliveryBtn.disabled = true;
       try {
-        await submitDelivery(job.id, { deliveryDate, deliveryNote });
+        await submitDelivery(job.id, { deliveryDate, deliveryNote, supervisorName, deliveryImages });
+        deliveryImages = [];
         showToast(T.contractorSubmittedThanks);
       } catch (e) {
         console.error(e);
         showToast(T.errorPrefix + e.message);
+      } finally {
+        submitDeliveryBtn.disabled = false;
       }
     });
   }
