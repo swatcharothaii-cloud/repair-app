@@ -1449,14 +1449,23 @@ async function main() {
     const overdue = items.filter((r) => isOverdue(r.dueDate, r.status, STATUS.DONE)).length;
 
     const cards = [
-      { num: total, lbl: T.statTotal, color: "#2563eb" },
-      { num: pending, lbl: statusTri(STATUS.PENDING), color: "#f59e0b" },
-      { num: done, lbl: statusTri(STATUS.DONE), color: "#10b981" },
-      { num: forwarded, lbl: T.statForwarded, color: "#3b82f6" },
-      { num: overdue, lbl: T.statOverdue, color: "#ef4444" },
+      { num: total, lbl: T.statTotal, color: "#2563eb", icon: "📋" },
+      { num: pending, lbl: statusTri(STATUS.PENDING), color: "#f59e0b", icon: "⏳" },
+      { num: done, lbl: statusTri(STATUS.DONE), color: "#10b981", icon: "✅" },
+      { num: forwarded, lbl: T.statForwarded, color: "#3b82f6", icon: "📤" },
+      { num: overdue, lbl: T.statOverdue, color: "#ef4444", icon: "⚠️" },
     ];
     document.getElementById("stat-grid").innerHTML = cards
-      .map((c) => `<div class="stat-card"><div class="num" style="color:${c.color};">${c.num}</div><div class="lbl">${c.lbl}</div></div>`)
+      .map(
+        (c) => `
+      <div class="stat-card" style="--stat-color:${c.color};">
+        <div class="stat-icon">${c.icon}</div>
+        <div class="stat-body">
+          <div class="num" style="color:${c.color};">${c.num}</div>
+          <div class="lbl">${c.lbl}</div>
+        </div>
+      </div>`
+      )
       .join("");
   }
 
