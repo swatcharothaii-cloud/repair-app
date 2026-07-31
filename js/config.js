@@ -138,3 +138,9 @@ export const CONTRACTOR_JOB_STATUS_STYLE = {
 // Firestore เอกสารหนึ่งชิ้นมีขนาดจำกัดไม่เกิน 1MB จึงต้องบีบอัดรูปให้เล็กพอ
 export const IMAGE_MAX_DIMENSION = 1000; // px ด้านที่ยาวที่สุดหลังย่อ
 export const IMAGE_TARGET_BASE64_BYTES = 140 * 1024; // เป้าหมายขนาดต่อรูปหลังแปลงเป็น base64
+
+// ============================================================
+//  ลิงก์ไปยังระบบ progress-claim-app (ปุ่ม "🔗" ในหน้าแอดมิน เชื่อมต่อ 2 ระบบเข้าด้วยกัน)
+//  ⚠️ ตรวจสอบว่า URL นี้ตรงกับเว็บ progress-claim-app ที่ deploy จริงของคุณ — ถ้าไม่ตรง แก้ไขที่นี่ที่เดียว
+// ============================================================
+export const OTHER_APP_URL = "https://swatcharothaii-cloud.github.io/progress-claim-app/admin.html";

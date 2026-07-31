@@ -1,6 +1,7 @@
 import {
   DEPARTMENTS, STATUS, STATUS_STYLE, LIFF_ID_ADMIN, ADMINS, COMPANY, MAX_IMAGES, MAX_IMAGE_MB,
   CONTRACTOR_JOB_TYPE, CONTRACTOR_JOB_STATUS, CONTRACTOR_JOB_STATUS_STYLE, CONTRACTOR_JOB_TYPE_STYLE,
+  OTHER_APP_URL,
 } from "./config.js";
 import { showToast, formatDateThai, isOverdue, renderCompanyBrandBar } from "./utils.js";
 import { compressImageToDataUrl } from "./image-compress.js";
@@ -114,6 +115,30 @@ async function main() {
   const UNASSIGNED_PROJECT_KEY = "__unassigned__"; // ค่าที่ใช้แทน "รายการเก่าที่ยังไม่มีโปรเจกต์ระบุไว้"
   const PROJECT_SCOPE_KEY = "repairAdminProjectScope";
   let selectedProjectScope = localStorage.getItem(PROJECT_SCOPE_KEY) || ""; // "" = ทุกโปรเจกต์
+
+  // เชื่อมต่อ 2 ระบบ: ถ้าเปิดหน้านี้มาจากปุ่ม "🔗" ของ progress-claim-app จะมี ?project=<ชื่อโปรเจกต์> ติดมาด้วย
+  // ให้สลับขอบเขตโปรเจกต์ของหน้านี้ตามนั้นทันที (แทนค่าที่จำไว้ใน localStorage เดิม)
+  const urlProjectParam = new URLSearchParams(location.search).get("project");
+  if (urlProjectParam) {
+    selectedProjectScope = urlProjectParam;
+    localStorage.setItem(PROJECT_SCOPE_KEY, selectedProjectScope);
+  }
+  // อัปเดต href ของปุ่ม "🔗 Progress Claim App" ให้พาไปที่โปรเจกต์เดียวกันที่กำลังดูอยู่ตอนนี้เสมอ
+  function updateOtherAppLink() {
+    const btn = document.getElementById("link-other-app-btn");
+    if (!btn) return;
+    try {
+      const url = new URL(OTHER_APP_URL);
+      if (selectedProjectScope && selectedProjectScope !== UNASSIGNED_PROJECT_KEY) {
+        url.searchParams.set("project", selectedProjectScope);
+      } else {
+        url.searchParams.delete("project");
+      }
+      btn.href = url.toString();
+    } catch (e) {
+      // OTHER_APP_URL ยังไม่ได้ตั้งค่า/รูปแบบไม่ถูกต้อง — ปล่อยลิงก์ไว้เฉยๆ ไม่ต้อง throw
+    }
+  }
   function withinProjectScope(r) {
     if (!selectedProjectScope) return true;
     if (selectedProjectScope === UNASSIGNED_PROJECT_KEY) return !r.project;
@@ -211,6 +236,7 @@ async function main() {
     switcherEl.value = prevScope;
     if (switcherEl.value !== prevScope) switcherEl.value = ""; // ถ้าโปรเจกต์ที่เคยเลือกไว้หายไป กลับไปที่ "ทุกโปรเจกต์"
     selectedProjectScope = switcherEl.value;
+    updateOtherAppLink();
 
     fillSelect(document.getElementById("d-project"), projects.map((p) => p.label), true, (o) => o);
   }
@@ -218,6 +244,7 @@ async function main() {
   document.getElementById("project-switcher").addEventListener("change", (e) => {
     selectedProjectScope = e.target.value;
     localStorage.setItem(PROJECT_SCOPE_KEY, selectedProjectScope);
+    updateOtherAppLink();
     renderAll();
   });
 
