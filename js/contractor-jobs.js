@@ -14,6 +14,7 @@ import {
 } from "./firebase-init.js";
 import { CONTRACTOR_JOBS_COLLECTION } from "./firebase-init.js";
 import { CONTRACTOR_JOB_STATUS } from "./config.js";
+import { createFreshApproval, approveApprovalStep, rejectApprovalStep, APPROVAL_STATUS } from "./approval.js";
 
 function generateJobId() {
   const d = new Date();
@@ -194,6 +195,7 @@ export async function setPoNumber(id, poNumber) {
 }
 
 // ผู้รับเหมาแจ้งส่งมอบงานจริง (ผ่านลิงก์สาธารณะ contractor.html เดิม ไม่ต้องล็อกอิน)
+// ทุกครั้งที่ส่งมอบงาน (ครั้งแรก หรือส่งใหม่หลังตรวจไม่ผ่าน) จะเริ่มกระบวนการอนุมัติ 4 ขั้นตอนใหม่เสมอ
 export async function submitDelivery(id, { deliveryDate, deliveryNote, supervisorName, deliveryImages }) {
   await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), {
     deliveryDate,
@@ -202,37 +204,53 @@ export async function submitDelivery(id, { deliveryDate, deliveryNote, superviso
     deliveryImages: deliveryImages || [],
     deliverySubmitted: true,
     deliverySubmittedAt: serverTimestamp(),
+    approval: createFreshApproval(),
     updatedAt: serverTimestamp(),
   });
 }
 
-// ทีมงานภายในตรวจงานที่ผู้รับเหมาส่งมอบมา — ผลตรวจมี 2 แบบ: "ผ่าน" (ปิดงานเสร็จสิ้น) หรือ "ไม่ผ่าน" (ให้ส่งมอบงานใหม่)
-// round: เลขรอบที่ตรวจ (นับต่อจากรอบก่อนหน้า ส่งมาจากฝั่งแอดมิน เพื่อไม่ต้องอ่านข้อมูลซ้ำก่อนเขียน)
-// inspectorName: ชื่อผู้ตรวจงาน (พิมพ์เองตอนกดตรวจ ไม่ผูกกับชื่อแอดมินที่ล็อกอินอยู่ เพราะอาจเป็นคนละคนกัน)
-export async function passDeliveryInspection(id, { round, inspectorName, note }) {
-  await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), {
-    inspectionRound: round,
-    lastInspectionResult: "passed",
-    lastInspectionBy: (inspectorName || "").trim(),
-    lastInspectionNote: (note || "").trim(),
-    lastInspectionAt: serverTimestamp(),
-    deliveryAccepted: true,
-    deliveryAcceptedBy: (inspectorName || "").trim(),
-    deliveryAcceptedAt: serverTimestamp(),
-    status: CONTRACTOR_JOB_STATUS.DONE,
-    updatedAt: serverTimestamp(),
-  });
+// ---- ตรวจรับงานที่ผู้รับเหมาส่งมอบมา — ระบบอนุมัติ 4 ขั้นตอน (ทีมงาน/PM/จัดซื้อ/ผู้บริหาร) ----
+// ใครก็ได้ที่ล็อกอินอยู่ (actorName = currentAdmin.name) กดแทนขั้นตอนไหนก็ได้ ไม่มีการบังคับสิทธิ์ตามตำแหน่งจริง
+// อนุมัติขั้นตอนปัจจุบัน — ถ้าเป็นขั้นตอนสุดท้าย (ขั้นที่ 4) จะถือว่า "ตรวจรับผ่านทั้งหมด" ปิดงานเสร็จสิ้นทันที
+export async function approveJobDeliveryStep(id, actorName, note) {
+  const snap = await getDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id));
+  const job = snap.exists() ? snap.data() : null;
+  const approval = approveApprovalStep(job?.approval, actorName, note, serverTimestamp);
+  const patch = { approval, updatedAt: serverTimestamp() };
+  if (approval.status === APPROVAL_STATUS.APPROVED) {
+    const round = (job?.inspectionRound || 0) + 1;
+    Object.assign(patch, {
+      inspectionRound: round,
+      lastInspectionResult: "passed",
+      lastInspectionBy: (actorName || "").trim(),
+      lastInspectionNote: (note || "").trim(),
+      lastInspectionAt: serverTimestamp(),
+      deliveryAccepted: true,
+      deliveryAcceptedBy: (actorName || "").trim(),
+      deliveryAcceptedAt: serverTimestamp(),
+      status: CONTRACTOR_JOB_STATUS.DONE,
+    });
+  }
+  await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), patch);
+  return approval;
 }
 
-export async function failDeliveryInspection(id, { round, inspectorName, note }) {
+// ปฏิเสธขั้นตอนปัจจุบัน — จบกระบวนการทันที (ตรวจไม่ผ่าน) ผู้รับเหมาต้องส่งมอบงานใหม่ (submitDelivery จะเริ่มกระบวนการใหม่)
+export async function rejectJobDeliveryStep(id, actorName, note) {
+  const snap = await getDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id));
+  const job = snap.exists() ? snap.data() : null;
+  const approval = rejectApprovalStep(job?.approval, actorName, note, serverTimestamp);
+  const round = (job?.inspectionRound || 0) + 1;
   await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), {
+    approval,
     inspectionRound: round,
     lastInspectionResult: "failed",
-    lastInspectionBy: (inspectorName || "").trim(),
+    lastInspectionBy: (actorName || "").trim(),
     lastInspectionNote: (note || "").trim(),
     lastInspectionAt: serverTimestamp(),
     // รีเซ็ตให้ผู้รับเหมาส่งมอบงานใหม่อีกครั้ง (deliveryAccepted ยังเป็น false อยู่แล้ว ไม่ต้องแก้)
     deliverySubmitted: false,
     updatedAt: serverTimestamp(),
   });
+  return approval;
 }

@@ -468,9 +468,10 @@ async function main() {
     sendJobForApproval,
     deleteContractorJob,
     setPoNumber,
-    passDeliveryInspection,
-    failDeliveryInspection,
+    approveJobDeliveryStep,
+    rejectJobDeliveryStep,
   } = await import("./contractor-jobs.js");
+  const { ensureApproval, renderApprovalStepper, APPROVAL_STATUS, APPROVAL_STEP_DEFS } = await import("./approval.js");
 
   let contractors = [];
   try {
@@ -893,12 +894,18 @@ async function main() {
             : `<button class="btn btn-outline btn-sm cj-set-po-btn" data-id="${j.id}">${T.btnSetPoNumber}</button>`;
           const photoCountBadge = (j.deliveryImages || []).length ? ` 🖼️${j.deliveryImages.length}` : "";
           const roundBadge = j.inspectionRound ? `<div class="hint" style="margin-top:2px;">🔍 ${T.inspectionRoundLabel} ${j.inspectionRound}${j.lastInspectionResult === "failed" ? " ❌" : ""}</div>` : "";
+          const jobApproval = ensureApproval(j.approval);
+          const jobStepDef = APPROVAL_STEP_DEFS.find((d) => d.step === jobApproval.currentStep);
+          const stepHint =
+            j.deliverySubmitted && !j.deliveryAccepted && jobApproval.status === APPROVAL_STATUS.IN_PROGRESS
+              ? `<div class="hint" style="margin-top:2px;">${jobStepDef?.icon || ""} ${jobApproval.currentStep}/4 ${escapeHtmlGlobal(jobStepDef?.labelTh || "")}</div>`
+              : "";
           let deliveryLine = `<div class="hint" style="margin-top:4px;">- ${T.contractorSubmitDeliveryTitle}</div>`;
           if (j.deliveryAccepted) {
             deliveryLine = `<div class="hint" style="margin-top:4px; color:#1e40af; font-weight:600;">✅ ${formatDateThai(j.deliveryDate)}${photoCountBadge}</div>${roundBadge}`;
           } else if (j.deliverySubmitted) {
             deliveryLine = `
-              <div class="hint" style="margin-top:4px; color:#92400e;">⏳ ${formatDateThai(j.deliveryDate)}${photoCountBadge}</div>${roundBadge}
+              <div class="hint" style="margin-top:4px; color:#92400e;">⏳ ${formatDateThai(j.deliveryDate)}${photoCountBadge}</div>${roundBadge}${stepHint}
               <div style="display:flex; gap:4px; margin-top:4px;">
                 <button class="btn btn-sm cj-pass-delivery-btn" data-id="${j.id}" style="background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; padding:2px 6px; font-size:11px;">${T.btnInspectionPass}</button>
                 <button class="btn btn-sm cj-fail-delivery-btn" data-id="${j.id}" style="background:#fee2e2; color:#991b1b; border:1px solid #fca5a5; padding:2px 6px; font-size:11px;">${T.btnInspectionFail}</button>
@@ -989,18 +996,13 @@ async function main() {
         const id = btn.dataset.id;
         const j = contractorJobs.find((x) => x.id === id);
         if (!j) return;
-        const inspectorName = prompt(T.promptInspectorName, currentIdentity?.name || "");
-        if (inspectorName === null) return; // ผู้ใช้กดยกเลิก
-        if (!inspectorName.trim()) {
-          showToast(T.msgInspectorNameRequired);
-          return;
-        }
-        if (!confirm(`Confirm delivery passed for job "${j.jobId || id}"? / ยืนยันว่างาน "${j.jobId || id}" ตรวจผ่านแล้ว?`)) {
+        const approval = ensureApproval(j.approval);
+        const stepDef = APPROVAL_STEP_DEFS.find((d) => d.step === approval.currentStep);
+        if (!confirm(`Approve step ${approval.currentStep}/4 (${stepDef?.labelTh}) for job "${j.jobId || id}" as "${currentIdentity?.name}"? / ยืนยันอนุมัติขั้นตอนที่ ${approval.currentStep}/4 (${stepDef?.labelTh}) ของงาน "${j.jobId || id}" ในนาม "${currentIdentity?.name}"?`)) {
           return;
         }
         try {
-          const round = (j.inspectionRound || 0) + 1;
-          await passDeliveryInspection(id, { round, inspectorName });
+          await approveJobDeliveryStep(id, currentIdentity?.name, "");
           showToast(T.msgCategorySaved);
         } catch (e) {
           console.error(e);
@@ -1013,19 +1015,14 @@ async function main() {
         const id = btn.dataset.id;
         const j = contractorJobs.find((x) => x.id === id);
         if (!j) return;
-        const inspectorName = prompt(T.promptInspectorName, currentIdentity?.name || "");
-        if (inspectorName === null) return; // ผู้ใช้กดยกเลิก
-        if (!inspectorName.trim()) {
-          showToast(T.msgInspectorNameRequired);
-          return;
-        }
+        const approval = ensureApproval(j.approval);
+        const stepDef = APPROVAL_STEP_DEFS.find((d) => d.step === approval.currentStep);
         const note = prompt(T.promptInspectionFailNote, "") || "";
-        if (!confirm(`Mark delivery as failed for job "${j.jobId || id}"? Contractor will need to resubmit. / ยืนยันว่างาน "${j.jobId || id}" ตรวจไม่ผ่าน? ผู้รับเหมาต้องส่งมอบงานใหม่`)) {
+        if (!confirm(`Reject step ${approval.currentStep}/4 (${stepDef?.labelTh}) for job "${j.jobId || id}" as "${currentIdentity?.name}"? Contractor will need to resubmit. / ยืนยันปฏิเสธขั้นตอนที่ ${approval.currentStep}/4 (${stepDef?.labelTh}) ของงาน "${j.jobId || id}"? ผู้รับเหมาต้องส่งมอบงานใหม่`)) {
           return;
         }
         try {
-          const round = (j.inspectionRound || 0) + 1;
-          await failDeliveryInspection(id, { round, inspectorName, note });
+          await rejectJobDeliveryStep(id, currentIdentity?.name, note);
           showToast(T.msgCategorySaved);
         } catch (e) {
           console.error(e);
@@ -1157,20 +1154,8 @@ async function main() {
 
         ${photosSection}
 
-        <div class="dn-sign-grid">
-          <div class="dn-sign-block">
-            <div class="dn-sign-line">${j.supervisorName ? escapeHtmlGlobal(j.supervisorName) : "&nbsp;"}</div>
-            <div class="dn-sign-role">ผู้ส่งมอบงาน / Delivered by</div>
-          </div>
-          <div class="dn-sign-block">
-            <div class="dn-sign-line">${j.lastInspectionBy ? escapeHtmlGlobal(j.lastInspectionBy) : "&nbsp;"}</div>
-            <div class="dn-sign-role">ผู้ตรวจรับงาน / Inspected by</div>
-          </div>
-          <div class="dn-sign-block">
-            <div class="dn-sign-line">&nbsp;</div>
-            <div class="dn-sign-role">ผู้อนุมัติ / Approved by</div>
-          </div>
-        </div>
+        <div class="dn-section-title">✍️ Acceptance / การตรวจรับ (4 ขั้นตอน)</div>
+        ${renderApprovalStepper(ensureApproval(j.approval), { lang: "all", escapeHtml: escapeHtmlGlobal })}
       </div>
     `;
     setPrintPage("portrait", 10); // ใบส่งมอบงาน = เอกสารเดี่ยว พิมพ์แนวตั้ง A4
