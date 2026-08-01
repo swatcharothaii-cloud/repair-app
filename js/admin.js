@@ -1,5 +1,5 @@
 import {
-  DEPARTMENTS, STATUS, STATUS_STYLE, LIFF_ID_ADMIN, ADMINS, COMPANY, MAX_IMAGES, MAX_IMAGE_MB,
+  DEPARTMENTS, STATUS, STATUS_STYLE, LIFF_ID_ADMIN, COMPANY, MAX_IMAGES, MAX_IMAGE_MB,
   CONTRACTOR_JOB_TYPE, CONTRACTOR_JOB_STATUS, CONTRACTOR_JOB_STATUS_STYLE, CONTRACTOR_JOB_TYPE_STYLE,
   OTHER_APP_URL,
 } from "./config.js";
@@ -13,13 +13,14 @@ import {
 
 renderCompanyBrandBar("brand-bar", COMPANY);
 
-// ไม่ใช้ระบบล็อกอินแล้ว — ระบุตัวตนด้วยการ "เลือกชื่อ" จากรายชื่อคงที่ใน config.js (ADMINS)
+// ไม่ใช้ระบบล็อกอินแล้ว — ระบุตัวตนด้วยการ "เลือกชื่อ" จากรายชื่อแอดมิน (โหลดจาก Firestore collection
+// "admins" ผ่าน js/admins.js — เพิ่ม/แก้ไข/ปิดใช้งานได้เองจากหัวข้อ "จัดการรายชื่อแอดมิน" ด้านล่าง)
 // เก็บชื่อที่เลือกไว้ใน localStorage ของอุปกรณ์นี้ เพื่อไม่ต้องเลือกใหม่ทุกครั้งที่เปิดหน้า
 const IDENTITY_KEY = "repairAdminIdentity";
-function getStoredIdentity() {
+function getStoredIdentity(adminsList) {
   try {
     const parsed = JSON.parse(localStorage.getItem(IDENTITY_KEY) || "null");
-    if (parsed && ADMINS.some((a) => a.id === parsed.id)) return parsed;
+    if (parsed && adminsList.some((a) => a.id === parsed.id)) return parsed;
     return null;
   } catch {
     return null;
@@ -87,6 +88,18 @@ async function main() {
   } = await import("./firebase-init.js");
   const { loadCategories, addCategory, updateCategory } = await import("./categories.js");
   const { loadProjects, addProject, updateProject } = await import("./projects.js");
+  const { loadAdmins, addAdmin, updateAdmin } = await import("./admins.js");
+
+  // รายชื่อแอดมิน — โหลดจาก Firestore (เพิ่ม/แก้ไข/ปิดใช้งานเองได้จากส่วน "จัดการรายชื่อแอดมิน" ด้านล่าง)
+  // แทนที่ค่าตายตัวใน config.js เดิม (ครั้งแรกที่ใช้งานจะหว่านเมล็ดให้อัตโนมัติ ดู js/admins.js) — ใช้
+  // ร่วมกับระบบเบิกงวดงาน (progress-claim-app) เพราะเป็น Firestore โปรเจกต์เดียวกัน
+  let admins = [];
+  try {
+    admins = await loadAdmins();
+  } catch (e) {
+    console.warn("โหลดรายชื่อแอดมินไม่สำเร็จ", e);
+    showToast(T.msgAdminLoadFail, 4000);
+  }
 
   // ประเภทงาน — โหลดจาก Firestore (แก้ไข/เพิ่มเองได้จากส่วน "จัดการประเภทงาน" ด้านล่าง)
   // แทนที่ค่าตายตัวใน config.js เดิม (ครั้งแรกที่ใช้งานจะหว่านเมล็ดให้อัตโนมัติ ดู js/categories.js)
@@ -139,6 +152,21 @@ async function main() {
       // OTHER_APP_URL ยังไม่ได้ตั้งค่า/รูปแบบไม่ถูกต้อง — ปล่อยลิงก์ไว้เฉยๆ ไม่ต้อง throw
     }
   }
+
+  // ลิงก์ฟอร์มแจ้งซ่อม (index.html) แบบง่าย — ตัด "index.html" ออกเพราะ GitHub Pages เปิดหน้านี้
+  // เป็นค่าเริ่มต้นของโฟลเดอร์อยู่แล้ว จึงได้ลิงก์ที่หน้าตาสั้นๆ ดูง่ายกว่าเดิม ถ้าตอนนี้เลือกดูอยู่แค่
+  // โปรเจกต์เดียว (ไม่ใช่ "ทุกโปรเจกต์") จะแนบ ?project=<ชื่อโปรเจกต์> ไปด้วย เพื่อให้ฟอร์มเลือกโปรเจกต์
+  // ให้อัตโนมัติ ลูกบ้าน/ผู้เช่าไม่ต้องเลือกเอง ลดโอกาสเลือกผิด
+  function buildShareFormLink() {
+    const base = `${window.location.origin}${window.location.pathname.replace(/admin\.html$/, "")}`;
+    const url = new URL(base);
+    if (selectedProjectScope && selectedProjectScope !== UNASSIGNED_PROJECT_KEY) {
+      url.searchParams.set("project", selectedProjectScope);
+    }
+    // หน้าตาให้ง่ายที่สุด: ตัด "index.html" ท้ายเส้นทางออก (เปิดโฟลเดอร์เฉยๆ ก็ขึ้นหน้านี้อยู่แล้ว)
+    let text = url.toString();
+    return text;
+  }
   function withinProjectScope(r) {
     if (!selectedProjectScope) return true;
     if (selectedProjectScope === UNASSIGNED_PROJECT_KEY) return !r.project;
@@ -148,31 +176,36 @@ async function main() {
   const identityScreen = document.getElementById("identity-screen");
   const dashboard = document.getElementById("dashboard");
 
-  let currentIdentity = getStoredIdentity(); // {id, name}
+  let currentIdentity = getStoredIdentity(admins); // {id, name}
   let allRequests = []; // [{id, ...data}]
   let selectedPeriod = "day";
   let categoryChart = null;
   let activeDetailId = null;
+  let activeBeforeImages = []; // [{url}] รูป "ก่อนซ่อม" ของรายการที่กำลังเปิดดูอยู่
   let activeAfterImages = []; // [{url}] รูป "หลังซ่อม" ของรายการที่กำลังเปิดดูอยู่
   let unsubRequests = null; // ประกาศไว้ตั้งแต่ต้น main() เพราะ showDashboard()/startDashboard() อาจถูกเรียกทันทีด้านล่าง
   // (กรณีแอดมินเคยเลือกชื่อไว้แล้ว มี identity ที่จำไว้ใน localStorage) ก่อนที่โค้ดจะไล่ลงมาถึงบรรทัดประกาศตัวแปรนี้แบบเดิม
 
   // ---------------- IDENTITY (ไม่มีรหัสผ่าน) ----------------
   const idGrid = document.getElementById("admin-id-grid");
-  idGrid.innerHTML = ADMINS.map(
-    (a) => `<button type="button" class="admin-chip" data-id="${a.id}">
-      <span class="id-num">${idNumberLabel(a.id)}</span>${escapeHtmlGlobal(a.name)}
-    </button>`
-  ).join("");
-  idGrid.querySelectorAll(".admin-chip").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const found = ADMINS.find((a) => a.id === btn.dataset.id);
-      if (!found) return;
-      currentIdentity = found;
-      setStoredIdentity(found);
-      showDashboard();
+  function renderIdGrid() {
+    const activeAdmins = admins.filter((a) => a.active !== false);
+    idGrid.innerHTML = activeAdmins.map(
+      (a) => `<button type="button" class="admin-chip" data-id="${a.id}">
+        <span class="id-num">${idNumberLabel(a.id)}</span>${escapeHtmlGlobal(a.name)}
+      </button>`
+    ).join("");
+    idGrid.querySelectorAll(".admin-chip").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const found = admins.find((a) => a.id === btn.dataset.id);
+        if (!found) return;
+        currentIdentity = found;
+        setStoredIdentity(found);
+        showDashboard();
+      });
     });
-  });
+  }
+  renderIdGrid();
 
   document.getElementById("switch-user-btn").addEventListener("click", () => {
     clearStoredIdentity();
@@ -352,7 +385,7 @@ async function main() {
       renderAll();
       labelInput.value = "";
       iconInput.value = "";
-      colorInput.value = "#2563eb";
+      colorInput.value = "#4f46e5";
       showToast(T.msgCategoryAdded);
     } catch (err) {
       console.error(err);
@@ -371,7 +404,7 @@ async function main() {
         (p) => `
         <div class="cat-manage-row ${p.active === false ? "cat-disabled" : ""}" data-proj-id="${p.id}">
           <input type="text" class="cat-label-input proj-label-input" value="${escapeHtmlGlobal(p.label || "")}" data-field="label">
-          <input type="color" class="cat-color-input" value="${p.color || "#2563eb"}" data-field="color">
+          <input type="color" class="cat-color-input" value="${p.color || "#4f46e5"}" data-field="color">
           ${p.active === false ? `<span class="badge" style="background:#fee2e2; color:#991b1b;">${T.badgeProjectDisabled}</span>` : ""}
           <button type="button" class="btn btn-outline btn-sm" data-proj-save="${p.id}">${T.btnProjectSave}</button>
           <button type="button" class="btn ${p.active === false ? "btn-secondary" : "btn-outline"} btn-sm" data-proj-toggle="${p.id}">
@@ -448,7 +481,7 @@ async function main() {
       renderProjectManageList();
       renderAll();
       labelInput.value = "";
-      colorInput.value = "#2563eb";
+      colorInput.value = "#4f46e5";
       showToast(T.msgProjectAdded);
     } catch (err) {
       console.error(err);
@@ -458,12 +491,115 @@ async function main() {
     }
   });
 
+  // ---------------- จัดการรายชื่อแอดมิน (เพิ่ม/แก้ไขชื่อ/เปิด-ปิดใช้งานเอง ไม่ต้องแก้โค้ด+deploy) ----------------
+  // ใช้ collection "admins" ร่วมกับระบบเบิกงวดงาน (progress-claim-app) — เพิ่ม/แก้ไขจากที่นี่มีผลกับ
+  // อีกระบบทันที ปิดใช้งาน (ไม่ลบถาวร) เพื่อไม่ให้ประวัติ "แก้ไขล่าสุดโดย" ในรายการเก่าอ้างอิงชื่อที่หายไป
+  function renderAdminManageList() {
+    const listEl = document.getElementById("admin-manage-list");
+    if (!listEl) return;
+    const sorted = [...admins].sort((a, b) => (a.order ?? 999) - (b.order ?? 999) || (a.name || "").localeCompare(b.name || "", "th"));
+    listEl.innerHTML = sorted
+      .map(
+        (a) => `
+        <div class="cat-manage-row ${a.active === false ? "cat-disabled" : ""}" data-admin-id="${a.id}">
+          <span class="id-num" style="flex:0 0 auto;">${idNumberLabel(a.id)}</span>
+          <input type="text" class="cat-label-input" value="${escapeHtmlGlobal(a.name || "")}" data-field="name">
+          ${a.active === false ? `<span class="badge" style="background:#fee2e2; color:#991b1b;">${T.badgeAdminDisabled}</span>` : ""}
+          <button type="button" class="btn btn-outline btn-sm" data-admin-save="${a.id}">${T.btnAdminSave}</button>
+          <button type="button" class="btn ${a.active === false ? "btn-secondary" : "btn-outline"} btn-sm" data-admin-toggle="${a.id}">
+            ${a.active === false ? T.btnAdminEnable : T.btnAdminDisable}
+          </button>
+        </div>`
+      )
+      .join("");
+
+    listEl.querySelectorAll("[data-admin-save]").forEach((btn) => {
+      btn.addEventListener("click", () => saveAdminRow(btn.dataset.adminSave));
+    });
+    listEl.querySelectorAll("[data-admin-toggle]").forEach((btn) => {
+      btn.addEventListener("click", () => toggleAdminRow(btn.dataset.adminToggle));
+    });
+  }
+
+  async function saveAdminRow(id) {
+    const row = document.querySelector(`.cat-manage-row[data-admin-id="${id}"]`);
+    if (!row) return;
+    const name = row.querySelector('[data-field="name"]').value.trim();
+    if (!name) {
+      showToast(T.msgAdminNameRequired);
+      return;
+    }
+    try {
+      await updateAdmin(id, { name });
+      const a = admins.find((x) => x.id === id);
+      if (a) a.name = name;
+      renderAdminManageList();
+      renderIdGrid();
+      if (currentIdentity && currentIdentity.id === id) {
+        currentIdentity = { ...currentIdentity, name };
+        setStoredIdentity(currentIdentity);
+        document.getElementById("admin-whoami").textContent = `${idNumberLabel(currentIdentity.id)} · ${currentIdentity.name}`;
+      }
+      showToast(T.msgAdminSaved);
+    } catch (e) {
+      console.error(e);
+      showToast(T.errorPrefix + e.message);
+    }
+  }
+
+  async function toggleAdminRow(id) {
+    const a = admins.find((x) => x.id === id);
+    if (!a) return;
+    const nextActive = a.active === false ? true : false;
+    try {
+      await updateAdmin(id, { active: nextActive });
+      a.active = nextActive;
+      renderAdminManageList();
+      renderIdGrid();
+      showToast(T.msgAdminSaved);
+    } catch (e) {
+      console.error(e);
+      showToast(T.errorPrefix + e.message);
+    }
+  }
+
+  renderAdminManageList();
+
+  const adminAddForm = document.getElementById("admin-add-form");
+  if (adminAddForm) {
+    adminAddForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const nameInput = document.getElementById("admin-name");
+      const name = nameInput.value.trim();
+      if (!name) {
+        showToast(T.msgAdminNameRequired);
+        return;
+      }
+      const submitBtn = e.target.querySelector('button[type="submit"]');
+      submitBtn.disabled = true;
+      try {
+        const newId = await addAdmin({ name }, admins);
+        admins.push({ id: newId, name, active: true, order: parseInt(newId, 10) });
+        renderAdminManageList();
+        renderIdGrid();
+        nameInput.value = "";
+        showToast(T.msgAdminAdded);
+      } catch (err) {
+        console.error(err);
+        showToast(T.errorPrefix + err.message);
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  }
+
   // ============================================================
   //  ระบบส่งงานให้ผู้รับเหมา (Contractor Jobs) — เฟส 1
   // ============================================================
   const { loadContractors, addContractor, updateContractor, deleteContractor } = await import("./contractors.js");
   const {
     addContractorJob,
+    updateContractorJob,
     watchAllContractorJobs,
     sendJobForApproval,
     deleteContractorJob,
@@ -669,6 +805,7 @@ async function main() {
   // ---------------- สร้างงานส่งให้ผู้รับเหมา ----------------
   let cjImages = [];
   let cjSourceTicketId = ""; // ถ้าเปิดโมดัลนี้จาก "ส่งงานให้ผู้รับเหมา" ในรายละเอียดงานซ่อม จะมีเลขที่ตั๋วอ้างอิงมาด้วย
+  let cjEditingId = ""; // ถ้าเปิดโมดัลนี้เพื่อ "แก้ไขงานที่มีอยู่แล้ว" (ปุ่ม ✏️ ในตาราง) จะมี Firestore doc id ของงานนั้นอยู่ตรงนี้
   function renderCjImagePreviews() {
     const el = document.getElementById("cj-image-previews");
     el.innerHTML = cjImages
@@ -719,6 +856,11 @@ async function main() {
       showToast(T.errorPrefix + "กรุณาเพิ่มรายชื่อผู้รับเหมาก่อน (ดูหัวข้อ 👷 Manage Contractors ด้านบน)");
       return;
     }
+    cjEditingId = "";
+    document.getElementById("contractor-job-modal-title").textContent = "Send Job to Contractor / ส่งงานให้ผู้รับเหมา / 发送工程给承包商";
+    document.getElementById("save-contractor-job-btn").textContent = "Create & Get Link / สร้างและรับลิงก์ / 创建并获取链接";
+    document.getElementById("cj-type").disabled = false;
+    document.getElementById("cj-type-locked-hint").style.display = "none";
     refreshContractorSelect();
     refreshContractorJobProjectSelect();
     document.getElementById("cj-type").value = "fix";
@@ -732,6 +874,46 @@ async function main() {
     renderCjImagePreviews();
     document.getElementById("contractor-job-modal").style.display = "flex";
   });
+
+  // ---------------- แก้ไขงานที่ส่งให้ผู้รับเหมาไปแล้ว (ปุ่ม ✏️ ในตาราง) ----------------
+  // แก้ไขได้ทุกอย่างยกเว้น "ประเภทงาน" (คงที่หลังสร้าง เพราะกำหนดว่าใช้ฟิลด์ไหนบ้างในขั้นตอนถัดไป —
+  // ถ้าประเภทผิดจริงๆ ให้ลบแล้วสร้างใหม่แทน ป้องกันข้อมูลที่ผู้รับเหมาตอบรับไปแล้วไม่ตรงกับฟอร์ม)
+  function openContractorJobEditModal(id) {
+    const j = contractorJobs.find((x) => x.id === id);
+    if (!j) return;
+    cjEditingId = id;
+    cjSourceTicketId = j.ticketId || "";
+    document.getElementById("contractor-job-modal-title").textContent = `Edit Job / แก้ไขงาน / 编辑工程 (${j.jobId || ""})`;
+    document.getElementById("save-contractor-job-btn").textContent = "Save Changes / บันทึกการแก้ไข / 保存修改";
+
+    refreshContractorSelect();
+    refreshContractorJobProjectSelect();
+
+    document.getElementById("cj-type").value = j.type || CONTRACTOR_JOB_TYPE.FIX;
+    document.getElementById("cj-type").disabled = true;
+    document.getElementById("cj-type-locked-hint").style.display = "block";
+    updateCjTypeFieldVisibility(j.type);
+
+    const projSel = document.getElementById("cj-project");
+    if (j.projectId && Array.from(projSel.options).some((o) => o.value === j.projectId)) {
+      projSel.value = j.projectId;
+    }
+    document.getElementById("cj-site").value = j.siteName || "";
+    document.getElementById("cj-description").value = j.description || "";
+
+    const contractorSel = document.getElementById("cj-contractor");
+    if (j.contractorId && Array.from(contractorSel.options).some((o) => o.value === j.contractorId)) {
+      contractorSel.value = j.contractorId;
+    }
+
+    document.getElementById("cj-visit-date").value = j.siteVisitDate || "";
+    document.getElementById("cj-defect-round").value = j.defectRound || "";
+
+    cjImages = (j.images || []).slice(0, MAX_IMAGES).map((img) => ({ url: img.url }));
+    renderCjImagePreviews();
+
+    document.getElementById("contractor-job-modal").style.display = "flex";
+  }
   document.getElementById("close-contractor-job-modal").addEventListener("click", () => {
     document.getElementById("contractor-job-modal").style.display = "none";
   });
@@ -748,6 +930,12 @@ async function main() {
       return;
     }
     detailModal.style.display = "none";
+
+    cjEditingId = "";
+    document.getElementById("contractor-job-modal-title").textContent = "Send Job to Contractor / ส่งงานให้ผู้รับเหมา / 发送工程给承包商";
+    document.getElementById("save-contractor-job-btn").textContent = "Create & Get Link / สร้างและรับลิงก์ / 创建并获取链接";
+    document.getElementById("cj-type").disabled = false;
+    document.getElementById("cj-type-locked-hint").style.display = "none";
 
     // เรียงรายชื่อผู้รับเหมาให้คนที่ถนัดประเภทงานตรงกับใบแจ้งซ่อมนี้ขึ้นก่อน (เลือกง่ายขึ้น)
     refreshContractorSelect(r.categoryId);
@@ -797,31 +985,80 @@ async function main() {
     const btn = document.getElementById("save-contractor-job-btn");
     btn.disabled = true;
     try {
-      const { id } = await addContractorJob({
-        type,
-        ticketId: cjSourceTicketId,
-        projectId,
-        project,
-        siteName,
-        description,
-        images: cjImages,
-        contractorId,
-        contractorName,
-        siteVisitDate: type !== CONTRACTOR_JOB_TYPE.QUOTE ? siteVisitDate : "",
-        defectRound: type === CONTRACTOR_JOB_TYPE.DEFECT ? defectRound : "",
-        updatedBy: currentIdentity?.name || "",
-      });
-      document.getElementById("contractor-job-modal").style.display = "none";
-      cjSourceTicketId = "";
-      const link = `${window.location.origin}${window.location.pathname.replace(/admin\.html$/, "")}contractor.html?job=${id}`;
-      document.getElementById("contractor-link-output").value = link;
-      document.getElementById("contractor-link-modal").style.display = "flex";
+      if (cjEditingId) {
+        // แก้ไขงานที่มีอยู่แล้ว — ไม่แตะ "ประเภทงาน" (ล็อกไว้ตั้งแต่เปิดโมดัลแบบแก้ไข) และไม่แตะฟิลด์ที่มาจาก
+        // การตอบรับ/ดำเนินงานของผู้รับเหมา (สถานะ, ราคา, วันตรวจรับ ฯลฯ) — แก้ได้เฉพาะข้อมูลตอนสร้างงานเท่านั้น
+        await updateContractorJob(cjEditingId, {
+          projectId,
+          project,
+          siteName,
+          description,
+          images: cjImages,
+          contractorId,
+          contractorName,
+          siteVisitDate: type !== CONTRACTOR_JOB_TYPE.QUOTE ? siteVisitDate : "",
+          defectRound: type === CONTRACTOR_JOB_TYPE.DEFECT ? defectRound : "",
+          updatedBy: currentIdentity?.name || "",
+        });
+        document.getElementById("contractor-job-modal").style.display = "none";
+        cjEditingId = "";
+        showToast(T.msgCategorySaved);
+      } else {
+        const { id } = await addContractorJob({
+          type,
+          ticketId: cjSourceTicketId,
+          projectId,
+          project,
+          siteName,
+          description,
+          images: cjImages,
+          contractorId,
+          contractorName,
+          siteVisitDate: type !== CONTRACTOR_JOB_TYPE.QUOTE ? siteVisitDate : "",
+          defectRound: type === CONTRACTOR_JOB_TYPE.DEFECT ? defectRound : "",
+          updatedBy: currentIdentity?.name || "",
+        });
+        document.getElementById("contractor-job-modal").style.display = "none";
+        cjSourceTicketId = "";
+        const link = `${window.location.origin}${window.location.pathname.replace(/admin\.html$/, "")}contractor.html?job=${id}`;
+        document.getElementById("contractor-link-output").value = link;
+        document.getElementById("contractor-link-modal").style.display = "flex";
+      }
     } catch (e) {
       console.error(e);
       showToast(T.errorPrefix + e.message);
     } finally {
       btn.disabled = false;
     }
+  });
+
+  document.getElementById("share-form-link-btn").addEventListener("click", () => {
+    const link = buildShareFormLink();
+    document.getElementById("share-form-link-display").textContent = link;
+    document.getElementById("share-form-link-scope-hint").innerHTML =
+      selectedProjectScope && selectedProjectScope !== UNASSIGNED_PROJECT_KEY
+        ? `Send this link to residents/tenants of <strong>${escapeHtmlGlobal(selectedProjectScope)}</strong> — the project is pre-selected for them / ส่งลิงก์นี้ให้ลูกบ้าน/ผู้เช่าโครงการ <strong>${escapeHtmlGlobal(selectedProjectScope)}</strong> — ระบบจะเลือกโปรเจกต์นี้ให้อัตโนมัติ / 将此链接发送给 <strong>${escapeHtmlGlobal(selectedProjectScope)}</strong> 项目的住户/租户，系统会自动为其选定项目`
+        : `Send this link to residents/tenants — they can submit a repair request without logging in / ส่งลิงก์นี้ให้ลูกบ้าน/ผู้เช่า — แจ้งซ่อมได้เลยโดยไม่ต้องล็อกอิน (เลือกโปรเจกต์ "ทุกโปรเจกต์" อยู่ ระบบจะให้ลูกบ้านเลือกโปรเจกต์เอง) / 将此链接发送给住户/租户，无需登录即可提交报修`;
+    document.getElementById("share-form-link-modal").style.display = "flex";
+  });
+  document.getElementById("close-share-form-link-modal").addEventListener("click", () => {
+    document.getElementById("share-form-link-modal").style.display = "none";
+  });
+  document.getElementById("copy-share-form-link-btn").addEventListener("click", async () => {
+    const link = document.getElementById("share-form-link-display").textContent;
+    try {
+      await navigator.clipboard.writeText(link);
+    } catch {
+      const tmp = document.createElement("textarea");
+      tmp.value = link;
+      tmp.style.position = "fixed";
+      tmp.style.opacity = "0";
+      document.body.appendChild(tmp);
+      tmp.select();
+      document.execCommand("copy");
+      document.body.removeChild(tmp);
+    }
+    showToast(T.linkCopiedMsg);
   });
 
   document.getElementById("close-contractor-link-modal").addEventListener("click", () => {
@@ -927,6 +1164,7 @@ async function main() {
           <td><span class="cat-badge" style="background:${style.bg}; color:${style.text};"><span class="dot" style="background:${style.dot};"></span>${contractorJobStatusTri(j.status)}</span>${approvalBadge}</td>
           <td>${deliveryCell}</td>
           <td>
+            <button class="btn btn-outline btn-sm cj-edit-btn" data-id="${j.id}" title="Edit job / แก้ไขงาน / 编辑工程">✏️</button>
             <button class="btn btn-outline btn-sm cj-copy-link-btn" data-link="${escapeHtmlGlobal(link)}" title="Copy job link / คัดลอกลิงก์งาน / 复制工程链接">📋</button>
             <button class="btn btn-outline btn-sm cj-send-approval-btn" data-id="${j.id}" title="Send approval link to management / ส่งลิงก์อนุมัติให้ผู้บริหาร / 发送审批链接给管理层">🔗</button>
             <button class="btn btn-outline btn-sm cj-print-btn" data-id="${j.id}" title="${T.btnPrintDeliveryNote}">📄</button>
@@ -935,6 +1173,9 @@ async function main() {
         </tr>`;
       })
       .join("");
+    tbody.querySelectorAll(".cj-edit-btn").forEach((btn) => {
+      btn.addEventListener("click", () => openContractorJobEditModal(btn.dataset.id));
+    });
     tbody.querySelectorAll(".cj-copy-link-btn").forEach((btn) => {
       btn.addEventListener("click", async () => {
         try {
@@ -1475,7 +1716,7 @@ async function main() {
     const overdue = items.filter((r) => isOverdue(r.dueDate, r.status, STATUS.DONE)).length;
 
     const cards = [
-      { num: total, lbl: T.statTotal, color: "#2563eb", icon: "📋" },
+      { num: total, lbl: T.statTotal, color: "#4f46e5", icon: "📋" },
       { num: pending, lbl: statusTri(STATUS.PENDING), color: "#f59e0b", icon: "⏳" },
       { num: done, lbl: statusTri(STATUS.DONE), color: "#10b981", icon: "✅" },
       { num: forwarded, lbl: T.statForwarded, color: "#3b82f6", icon: "📤" },
@@ -1674,21 +1915,10 @@ async function main() {
       mapLink.style.display = "none";
     }
 
-    const imgWrap = document.getElementById("d-images");
-    imgWrap.innerHTML = (r.images || [])
-      .map((img, idx) => `<div class="img-preview"><img src="${img.url}" data-idx="${idx}" title="${T.clickToViewPhoto}"><button type="button" class="remove-btn" data-idx="${idx}">✕</button></div>`)
-      .join("") || `<div class="hint">${T.noImagesAttached}</div>`;
-    imgWrap.querySelectorAll("img").forEach((imgEl) => {
-      imgEl.addEventListener("click", () => openLightbox(r.images, Number(imgEl.dataset.idx)));
-    });
-    imgWrap.querySelectorAll(".remove-btn").forEach((btn) => {
-      btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const idx = Number(btn.dataset.idx);
-        r.images = r.images.filter((_, i) => i !== idx);
-        openDetail(id); // re-render
-      });
-    });
+    // รูปภาพ "ก่อนซ่อม" — เก็บ state แยกต่างหาก (activeBeforeImages) เพื่อรองรับการเพิ่ม/แทนที่รูปได้ด้วย
+    // ไม่ใช่แค่ลบทิ้งอย่างเดียวเหมือนเดิม (แก้ปัญหาที่เคยเพิ่ม/แก้ไขรูปก่อนซ่อมไม่ได้เลยหลังสร้างรายการแล้ว)
+    activeBeforeImages = (r.images || []).slice();
+    renderBeforeImagePreviews();
 
     // รูปภาพ "หลังซ่อม" — เก็บ state แยกต่างหาก (activeAfterImages) เพื่อรองรับการเพิ่มรูปใหม่ก่อนกดบันทึก
     activeAfterImages = (r.afterImages || []).slice();
@@ -1699,6 +1929,53 @@ async function main() {
 
     detailModal.style.display = "flex";
   }
+
+  function renderBeforeImagePreviews() {
+    const beforeWrap = document.getElementById("d-images");
+    const beforeUploadBox = document.getElementById("d-before-upload-box");
+    beforeWrap.innerHTML = activeBeforeImages
+      .map((img, idx) => `<div class="img-preview"><img src="${img.url}" data-idx="${idx}" title="${T.clickToViewPhoto}"><button type="button" class="remove-btn" data-idx="${idx}">✕</button></div>`)
+      .join("") || `<div class="hint">${T.noImagesAttached}</div>`;
+    beforeWrap.querySelectorAll("img").forEach((imgEl) => {
+      imgEl.addEventListener("click", () => openLightbox(activeBeforeImages, Number(imgEl.dataset.idx)));
+    });
+    beforeWrap.querySelectorAll(".remove-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const idx = Number(btn.dataset.idx);
+        activeBeforeImages = activeBeforeImages.filter((_, i) => i !== idx);
+        renderBeforeImagePreviews();
+      });
+    });
+    if (beforeUploadBox) beforeUploadBox.style.display = activeBeforeImages.length >= MAX_IMAGES ? "none" : "block";
+  }
+
+  const BEFORE_MAX_BYTES = MAX_IMAGE_MB * 1024 * 1024;
+  const beforeUploadBoxEl = document.getElementById("d-before-upload-box");
+  const beforeImageInput = document.getElementById("d-before-image-input");
+  beforeUploadBoxEl.addEventListener("click", () => beforeImageInput.click());
+  beforeImageInput.addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files || []);
+    beforeImageInput.value = "";
+    for (const f of files) {
+      if (activeBeforeImages.length >= MAX_IMAGES) {
+        showToast(msgMaxImages(MAX_IMAGES));
+        break;
+      }
+      if (f.size > BEFORE_MAX_BYTES) {
+        showToast(msgFileTooLarge(f.name, MAX_IMAGE_MB));
+        continue;
+      }
+      try {
+        const dataUrl = await compressImageToDataUrl(f);
+        activeBeforeImages.push({ url: dataUrl });
+      } catch (err) {
+        console.error(err);
+        showToast(T.msgCompressFailPrefix + err.message);
+      }
+    }
+    renderBeforeImagePreviews();
+  });
 
   function renderAfterImagePreviews() {
     const afterWrap = document.getElementById("d-after-images");
@@ -1770,7 +2047,7 @@ async function main() {
         dueDate: document.getElementById("d-dueDate").value,
         status: document.getElementById("d-status").value,
         forwardDept: document.getElementById("d-status").value === STATUS.FORWARDED ? document.getElementById("d-forwardDept").value : "",
-        images: r ? r.images : [],
+        images: activeBeforeImages,
         afterImages: activeAfterImages,
         updatedAt: serverTimestamp(),
         updatedBy: currentIdentity ? `${currentIdentity.id} - ${currentIdentity.name}` : tri("Admin", "แอดมิน", "管理员"),

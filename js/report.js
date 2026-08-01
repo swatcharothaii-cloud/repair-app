@@ -77,6 +77,21 @@ function renderProjectOptions() {
   select.innerHTML = placeholder + projectsList.map((p) => `<option value="${p.id}">${escapeHtml(p.label)}</option>`).join("");
   const emptyHint = document.getElementById("project-empty-hint");
   if (emptyHint) emptyHint.style.display = projectsList.length ? "none" : "block";
+  applyProjectFromUrl();
+}
+
+// ถ้าเปิดฟอร์มมาจากลิงก์ที่แอดมินแชร์ไว้ (มี ?project=<ชื่อโปรเจกต์> ติดมาด้วย — ดูปุ่ม "📋 Share Repair
+// Form Link" ในหน้าแอดมิน) ให้เลือกโปรเจกต์นั้นให้อัตโนมัติ ผู้แจ้งไม่ต้องเลือกเอง ลดโอกาสเลือกผิด
+let projectPreselectedFromUrl = false;
+function applyProjectFromUrl() {
+  if (projectPreselectedFromUrl) return;
+  const urlProject = new URLSearchParams(location.search).get("project");
+  if (!urlProject) return;
+  const match = projectsList.find((p) => p.label === urlProject);
+  if (match) {
+    document.getElementById("projectSelect").value = match.id;
+    projectPreselectedFromUrl = true;
+  }
 }
 
 function escapeHtml(str) {

@@ -244,6 +244,16 @@ export const T = {
   msgProjectSaved: tri("Project updated successfully", "บันทึกโปรเจกต์สำเร็จ", "项目已成功更新"),
   msgProjectLoadFail: tri("Unable to load projects. Please refresh this page", "โหลดรายการโปรเจกต์ไม่สำเร็จ กรุณารีเฟรชหน้านี้", "无法加载项目列表，请刷新此页面"),
 
+  // -------- จัดการรายชื่อแอดมิน --------
+  btnAdminSave: tri("Save", "บันทึก", "保存"),
+  btnAdminDisable: tri("Disable", "ปิดใช้งาน", "停用"),
+  btnAdminEnable: tri("Enable", "เปิดใช้งาน", "启用"),
+  badgeAdminDisabled: tri("Disabled", "ปิดใช้งานอยู่", "已停用"),
+  msgAdminNameRequired: tri("Please enter an admin name", "กรุณากรอกชื่อแอดมิน", "请输入管理员姓名"),
+  msgAdminAdded: tri("Admin added successfully", "เพิ่มแอดมินสำเร็จ", "管理员添加成功"),
+  msgAdminSaved: tri("Admin updated successfully", "บันทึกแอดมินสำเร็จ", "管理员已成功更新"),
+  msgAdminLoadFail: tri("Unable to load the admin list. Please refresh this page", "โหลดรายชื่อแอดมินไม่สำเร็จ กรุณารีเฟรชหน้านี้", "无法加载管理员名单，请刷新此页面"),
+
   // -------- แผนที่ (map-picker.js) --------
   mapNoResults: tri("No location found", "ไม่พบสถานที่", "未找到地点"),
   mapLoadErrorLine1: tri("⚠️ Unable to load map", "⚠️ ไม่สามารถโหลดแผนที่ได้", "⚠️ 无法加载地图"),

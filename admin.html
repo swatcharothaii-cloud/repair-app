@@ -30,7 +30,8 @@
       <h2 style="margin:0;">🛠️ Working List Dashboard / ระบบแจ้งซ่อมและจ่ายงาน / 报修派工看板</h2>
       <div class="hint" id="admin-whoami"></div>
     </div>
-    <div style="display:flex; gap:8px;">
+    <div style="display:flex; gap:8px; flex-wrap:wrap;">
+      <button class="btn btn-primary btn-sm" id="share-form-link-btn" style="white-space:nowrap;" title="แชร์ลิงก์ฟอร์มแจ้งซ่อมให้ลูกบ้าน/ผู้เช่า">📋 Share Repair Form Link / แชร์ลิงก์แจ้งซ่อม / 分享报修链接</button>
       <a href="#" target="_blank" rel="noopener" class="btn btn-outline btn-sm" id="link-other-app-btn" style="white-space:nowrap;" title="เปิดระบบเบิกงวดงานในแท็บใหม่ — ถ้าเลือกโปรเจกต์ไว้ จะพาไปที่โปรเจกต์เดียวกัน">🔗 Progress Claim App / ระบบเบิกงวดงาน / 工程款申请</a>
       <button class="btn btn-outline btn-sm" id="switch-user-btn">Switch User / เปลี่ยนผู้ใช้งาน / 切换用户</button>
     </div>
@@ -69,7 +70,7 @@
         </div>
         <div class="field" style="flex:0 0 80px; margin-bottom:0;">
           <label>Color / สี / 颜色</label>
-          <input type="color" id="proj-color" value="#2563eb" style="padding:2px; height:38px; width:100%;">
+          <input type="color" id="proj-color" value="#4f46e5" style="padding:2px; height:38px; width:100%;">
         </div>
         <button type="submit" class="btn btn-primary btn-sm" style="flex:0 0 auto;">+ Add / เพิ่ม / 添加</button>
       </form>
@@ -78,6 +79,25 @@
         Note: The project name is saved in Thai as the actual stored value. Disabling a project hides it from the report form but keeps it visible in the dashboard/project switcher, so old data is unaffected. /
         หมายเหตุ: ชื่อโปรเจกต์จะถูกบันทึกเป็นภาษาไทยตามที่กรอกจริง การปิดใช้งานจะซ่อนจากฟอร์มแจ้งซ่อมใหม่ แต่ยังเห็นในแดชบอร์ด/ตัวสลับโปรเจกต์เหมือนเดิม เพื่อไม่กระทบข้อมูลเก่า /
         注意：项目名称将以泰文实际填写内容保存。停用某项目只会将其从新报修表单中隐藏，仍会显示在仪表板／项目切换器中，不影响旧数据
+      </p>
+    </div>
+  </details>
+
+  <details class="chart-card" id="admin-manager">
+    <summary style="cursor:pointer; font-weight:600; font-size:15px;">🧑‍💼 Manage Admins / จัดการรายชื่อแอดมิน / 管理管理员名单</summary>
+    <div style="margin-top:16px;">
+      <form id="admin-add-form" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:16px;">
+        <div class="field" style="flex:1; min-width:180px; margin-bottom:0;">
+          <label>Admin Name * / ชื่อแอดมิน * / 管理员姓名 *</label>
+          <input type="text" id="admin-name" placeholder="e.g. K.Nueng / เช่น คุณหนึ่ง" required>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm" style="flex:0 0 auto;">+ Add / เพิ่ม / 添加</button>
+      </form>
+      <div id="admin-manage-list"></div>
+      <p class="hint" style="margin-top:12px;">
+        Note: This admin list is shared with the Progress Claim App (same database) — adding/editing here also updates there. Disabling an admin hides them from the name picker but keeps their name on past records they edited, so old data/history is unaffected. /
+        หมายเหตุ: รายชื่อแอดมินนี้ใช้ร่วมกับระบบเบิกงวดงาน (ฐานข้อมูลเดียวกัน) — เพิ่ม/แก้ไขที่นี่มีผลกับอีกระบบด้วย การปิดใช้งานจะซ่อนจากหน้าเลือกชื่อ แต่ชื่อยังคงอยู่ในรายการเก่าที่เคยแก้ไขไว้เหมือนเดิม เพื่อไม่กระทบประวัติข้อมูล /
+        注意：此管理员名单与工程款申请系统共用（同一数据库）——在此新增/编辑也会同步更新至另一系统。停用某管理员只会将其从姓名选择页隐藏，仍会保留在其编辑过的旧记录中，不影响历史数据
       </p>
     </div>
   </details>
@@ -96,7 +116,7 @@
         </div>
         <div class="field" style="flex:0 0 80px; margin-bottom:0;">
           <label>Color / สี / 颜色</label>
-          <input type="color" id="cat-color" value="#2563eb" style="padding:2px; height:38px; width:100%;">
+          <input type="color" id="cat-color" value="#4f46e5" style="padding:2px; height:38px; width:100%;">
         </div>
         <button type="submit" class="btn btn-primary btn-sm" style="flex:0 0 auto;">+ Add / เพิ่ม / 添加</button>
       </form>
@@ -251,6 +271,11 @@
     <div class="field">
       <label>📷 Before-Repair Photos / รูปภาพก่อนซ่อม (Before) / 维修前照片</label>
       <div class="img-preview-grid" id="d-images"></div>
+      <div class="upload-box" id="d-before-upload-box">
+        <input type="file" id="d-before-image-input" accept="image/*" multiple style="display:none">
+        📷 Tap to add before-repair photo / แตะเพื่อเพิ่มรูปก่อนซ่อม / 点击添加维修前照片
+      </div>
+      <div class="hint">Attach up to 5 photos / แนบได้สูงสุด 5 ภาพ / 最多可上传5张</div>
     </div>
 
     <div class="field">
@@ -277,7 +302,7 @@
 <div class="modal-overlay" id="contractor-job-modal" style="display:none;">
   <div class="modal-sheet">
     <div class="modal-header">
-      <h3>Send Job to Contractor / ส่งงานให้ผู้รับเหมา / 发送工程给承包商</h3>
+      <h3 id="contractor-job-modal-title">Send Job to Contractor / ส่งงานให้ผู้รับเหมา / 发送工程给承包商</h3>
       <button class="icon-btn" id="close-contractor-job-modal">✕</button>
     </div>
 
@@ -288,6 +313,7 @@
         <option value="quote">💰 New work (quote needed) / งานใหม่ที่ต้องเสนอราคา / 新工程（需报价）</option>
         <option value="defect">⚠️ Defect / failed inspection / งานแก้ไขที่ตรวจไม่ผ่าน / 检验不合格返修</option>
       </select>
+      <p class="hint" id="cj-type-locked-hint" style="display:none;">Job type can't be changed after creation (it determines which fields apply) — delete and recreate the job if the type is wrong / เปลี่ยนประเภทงานหลังสร้างแล้วไม่ได้ (เพราะกำหนดว่าใช้ฟิลด์ไหนบ้าง) — ถ้าประเภทผิด ให้ลบแล้วสร้างใหม่แทน / 创建后无法更改工程类型（决定适用哪些字段）——如类型有误，请删除后重新创建</p>
     </div>
 
     <div class="field" id="cj-defect-round-field" style="display:none;">
@@ -335,6 +361,21 @@
 </div>
 
 <!-- ============ CONTRACTOR JOB LINK RESULT MODAL ============ -->
+<!-- ============ SHARE REPAIR FORM LINK MODAL (ลิงก์แบบง่ายให้ลูกบ้าน/ผู้เช่ากดแจ้งซ่อม) ============ -->
+<div class="modal-overlay" id="share-form-link-modal" style="display:none;">
+  <div class="modal-sheet" style="max-width:480px;">
+    <div class="modal-header">
+      <h3>📋 Repair Form Link / ลิงก์แจ้งซ่อม / 报修链接</h3>
+      <button class="icon-btn" id="close-share-form-link-modal">✕</button>
+    </div>
+    <p class="hint" id="share-form-link-scope-hint">Send this link to residents/tenants — they can submit a repair request without logging in / ส่งลิงก์นี้ให้ลูกบ้าน/ผู้เช่า — แจ้งซ่อมได้เลยโดยไม่ต้องล็อกอิน / 将此链接发送给住户/租户，无需登录即可提交报修</p>
+    <div class="field">
+      <div id="share-form-link-display" style="display:flex; align-items:center; gap:8px; background:var(--primary-light); border:1px solid var(--border); border-radius:10px; padding:12px 14px; font-size:15px; font-weight:600; color:var(--primary-dark); word-break:break-all; line-height:1.5;"></div>
+    </div>
+    <button class="btn btn-primary btn-block" id="copy-share-form-link-btn">📋 Copy link / คัดลอกลิงก์ / 复制链接</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="contractor-link-modal" style="display:none;">
   <div class="modal-sheet" style="max-width:480px;">
     <div class="modal-header">
