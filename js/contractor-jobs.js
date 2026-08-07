@@ -12,8 +12,8 @@ import {
   orderBy,
   serverTimestamp,
 } from "./firebase-init.js";
-import { CONTRACTOR_JOBS_COLLECTION } from "./firebase-init.js";
-import { CONTRACTOR_JOB_STATUS, CONTRACTOR_JOB_TYPE } from "./config.js";
+import { CONTRACTOR_JOBS_COLLECTION, LEGACY_PO_COLLECTION } from "./firebase-init.js";
+import { CONTRACTOR_JOB_STATUS, CONTRACTOR_JOB_TYPE, PO_FILE_MAX_BYTES } from "./config.js";
 import { createFreshApproval, approveApprovalStep, rejectApprovalStep, APPROVAL_STATUS } from "./approval.js";
 
 // ============================================================
@@ -79,6 +79,13 @@ export async function addContractorJob(data) {
     respondedAt: null,
     // ---- ระบบส่งมอบงาน/PO (เฟส 2 ขั้นที่ 1: PO + ส่งมอบงาน + ตรวจรับ + ใบส่งมอบงาน PDF) ----
     poNumber: "", // เลขที่ใบสั่งซื้อ — แอดมินกรอกเองทีหลัง (ปกติหลังตกลงราคา/วันแล้ว)
+    // ไฟล์ PDF ใบสั่งซื้อที่แนบมากับ PO (ไม่บังคับ) — แนบแล้วจะเชื่อมข้อมูลเข้า "คลังใบสั่งซื้อเก่าจาก PEAK"
+    // ใน progress-claim-app ให้อัตโนมัติ (ดู setPoNumberWithFile ด้านล่าง)
+    poFileName: "",
+    poFileData: "",
+    poFileSize: null,
+    poFileUploadedAt: null,
+    linkedLegacyPoId: "", // id ของรายการที่ถูกสร้าง/เชื่อมไว้ใน collection "legacyPurchaseOrders" (ถ้ามี)
     deliveryDate: "", // วันที่ผู้รับเหมาแจ้งว่าส่งมอบงานจริง
     deliveryNote: "",
     supervisorName: "", // ชื่อผู้ดูแลงาน (ฝั่งผู้รับเหมา) ที่รับผิดชอบตอนส่งมอบงานนี้
@@ -260,6 +267,107 @@ export async function setPoNumber(id, poNumber) {
     poNumber: (poNumber || "").trim(),
     updatedAt: serverTimestamp(),
   });
+}
+
+// ============================================================
+//  แนบไฟล์ PDF ใบสั่งซื้อ (PO) ให้กับงาน + เชื่อมข้อมูลเข้า "คลังใบสั่งซื้อเก่าจาก PEAK"
+//  (collection "legacyPurchaseOrders" — ใช้ร่วมกับ progress-claim-app) โดยอัตโนมัติ
+//  ⚠️ ไม่ใช้ Firebase Storage (ดูเหตุผลใน firebase-init.js) — ไฟล์ PDF จึงเก็บเป็น base64 ตรงใน
+//  Firestore เช่นเดียวกับรูปภาพ ต้องเล็กพอไม่เกินขีดจำกัดเอกสาร 1MB ของ Firestore (ดู PO_FILE_MAX_BYTES)
+//  เชื่อมเข้าคลังเฉพาะตอนมีไฟล์แนบอยู่จริงเท่านั้น (ตามที่ตกลงกับผู้ใช้ — "แนบไฟล์แล้วค่อยไปโผล่ในคลัง")
+//  ถ้าลบไฟล์ที่แนบออก จะลบรายการที่เคยสร้างไว้ในคลังออกด้วย (กันซากข้อมูลไม่มี PDF ค้างอยู่)
+// ============================================================
+function readPoFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target.result);
+    reader.onerror = () => reject(new Error("อ่านไฟล์ PDF ไม่สำเร็จ"));
+    reader.readAsDataURL(file);
+  });
+}
+
+function todayIsoDate() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// แอดมินออก/แก้ไขเลขที่ PO พร้อมแนบ (หรือลบ) ไฟล์ PDF ใบสั่งซื้อได้ในคราวเดียว
+// file: File object ที่จะแนบใหม่ (null = ไม่แตะไฟล์เดิม) / removeFile: true = ลบไฟล์ที่แนบไว้เดิมออก
+export async function setPoNumberWithFile(id, poNumber, file, removeFile) {
+  if (file) {
+    if (file.type !== "application/pdf") {
+      throw new Error("แนบได้เฉพาะไฟล์ PDF เท่านั้น / Only PDF files can be attached");
+    }
+    if (file.size > PO_FILE_MAX_BYTES) {
+      throw new Error(
+        `ไฟล์ใหญ่เกินไป (สูงสุด ${Math.round(PO_FILE_MAX_BYTES / 1024)}KB เพราะเก็บตรงใน Firestore ไม่ใช้ Storage) / File too large (max ${Math.round(PO_FILE_MAX_BYTES / 1024)}KB)`
+      );
+    }
+  }
+  const patch = { poNumber: (poNumber || "").trim() };
+  if (file) {
+    patch.poFileName = file.name;
+    patch.poFileData = await readPoFileAsDataUrl(file);
+    patch.poFileSize = file.size;
+    patch.poFileUploadedAt = serverTimestamp();
+  } else if (removeFile) {
+    patch.poFileName = "";
+    patch.poFileData = "";
+    patch.poFileSize = null;
+  }
+  await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), { ...patch, updatedAt: serverTimestamp() });
+
+  const snap = await getDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id));
+  const job = snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  if (job) await syncContractorJobPoToArchive(job);
+}
+
+// ซิงก์ข้อมูล PO ของงานนี้เข้า/ออกจากคลัง PEAK Archive ตามสถานะไฟล์แนบล่าสุด
+async function syncContractorJobPoToArchive(job) {
+  if (!job.poFileData) {
+    // ไม่มีไฟล์แนบอยู่แล้ว (ยังไม่เคยแนบ หรือเพิ่งลบออก) — ถ้าเคยลิงก์ไว้ก่อนหน้านี้ ให้ลบรายการในคลังออกด้วย
+    if (job.linkedLegacyPoId) {
+      try {
+        await deleteDoc(doc(db, LEGACY_PO_COLLECTION, job.linkedLegacyPoId));
+      } catch (e) {
+        console.warn("ลบรายการที่เคยเชื่อมไว้ในคลัง PO เก่าไม่สำเร็จ (ข้ามไป):", e);
+      }
+      await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, job.id), { linkedLegacyPoId: "" });
+    }
+    return;
+  }
+  const amount = job.type === CONTRACTOR_JOB_TYPE.QUOTE ? job.quotePrice : job.repairPrice;
+  const archiveFields = {
+    poNumber: job.poNumber || "",
+    project: job.project || "",
+    projectId: job.projectId || "",
+    contractorNickname: job.contractorName || "",
+    totalAmount: amount ?? null,
+    notes: `Auto-linked from repair-app job ${job.jobId || job.id}${job.ticketId ? ` (ticket #${job.ticketId})` : ""} / เชื่อมข้อมูลอัตโนมัติจากงาน ${job.jobId || job.id} ใน repair-app`,
+    importBatch: "repair_app_link",
+    contractorJobId: job.id,
+    poFileName: job.poFileName || "",
+    poFileData: job.poFileData || "",
+    poFileSize: job.poFileSize || null,
+  };
+  if (job.linkedLegacyPoId) {
+    // อัปเดตรายการเดิม — ไม่แตะ issueDate/vendorName/status เพราะอาจถูกแก้ไขเองในหน้าคลัง PO เก่าไปแล้ว
+    await updateDoc(doc(db, LEGACY_PO_COLLECTION, job.linkedLegacyPoId), archiveFields);
+  } else {
+    const ref = await addDoc(collection(db, LEGACY_PO_COLLECTION), {
+      ...archiveFields,
+      vendorName: "",
+      issueDate: todayIsoDate(),
+      status: "เชื่อมจาก Repair App / Linked from Repair App",
+      lineItems: [],
+      vatAmount: null,
+      whtAmount: null,
+      netPayable: null,
+      rawProjectText: "",
+      createdAt: serverTimestamp(),
+    });
+    await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, job.id), { linkedLegacyPoId: ref.id });
+  }
 }
 
 // ผู้รับเหมาแจ้งส่งมอบงานจริง (ผ่านลิงก์สาธารณะ contractor.html เดิม ไม่ต้องล็อกอิน)

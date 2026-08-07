@@ -306,6 +306,18 @@ export const T = {
   btnAcceptDelivery: tri("✅ Accept delivery", "✅ ตรวจรับงาน", "✅ 验收交付"),
   btnSetPoNumber: tri("🧾 Set PO No.", "🧾 กรอกเลขที่ PO", "🧾 填写PO号"),
   promptSetPoNumber: tri("Enter PO number for this job:", "กรอกเลขที่ PO สำหรับงานนี้:", "请输入此工程的PO号："),
+  setPoModalTitle: tri("🧾 Set PO Number", "🧾 กรอกเลขที่ PO", "🧾 填写PO号"),
+  poNumberFieldLabel: tri("PO Number *", "เลขที่ PO *", "PO号 *"),
+  poFileFieldLabel: tri("Attach PO PDF (optional)", "แนบไฟล์ PDF ใบสั่งซื้อ (ไม่บังคับ)", "附上PO的PDF文件（可选）"),
+  poFileHint: tri(
+    "Once a PDF is attached, this PO will also appear in \"📜 Purchase Order Archive (PEAK Import)\" in the progress-claim system",
+    "เมื่อแนบไฟล์แล้ว PO นี้จะไปปรากฏใน \"📜 คลังใบสั่งซื้อเก่าจาก PEAK\" ในระบบเบิกงวดงานด้วย",
+    "附上PDF后，此PO也会出现在工程款申请系统的\"PEAK采购单存档\"中"
+  ),
+  poFileCurrentLabel: tri("Current file", "ไฟล์ปัจจุบัน", "当前文件"),
+  poFileRemoveLabel: tri("Remove attached PDF", "ลบไฟล์ที่แนบไว้", "移除已附加的PDF"),
+  poFileLinkedBadge: tri("🔗 In PEAK Archive", "🔗 อยู่ในคลัง PEAK", "🔗 已存入PEAK存档"),
+  msgPoNumberRequired: tri("Please enter a PO number", "กรุณากรอกเลขที่ PO", "请输入PO号"),
   btnPrintDeliveryNote: tri("Print delivery note", "พิมพ์ใบส่งมอบงาน", "打印交付单"),
   deliveryNoteTitle: tri("Job Delivery Note", "ใบส่งมอบงาน", "工程交付单"),
   contractorSupervisorNameLabel: tri("Supervisor / person in charge", "ชื่อผู้ดูแลงาน", "负责人姓名"),

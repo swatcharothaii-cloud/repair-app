@@ -54,3 +54,8 @@ export const CATEGORIES_COLLECTION = "categories";
 export const PROJECTS_COLLECTION = "projects";
 export const CONTRACTORS_COLLECTION = "contractors";
 export const CONTRACTOR_JOBS_COLLECTION = "contractorJobs";
+// คลังใบสั่งซื้อเก่าที่นำเข้าจาก PEAK — collection เดียวกับ progress-claim-app (Firestore ตัวเดียวกัน)
+// repair-app เขียนเข้า collection นี้ได้ด้วยตอนแอดมินแนบไฟล์ PDF ใบสั่งซื้อในตาราง "งานที่ส่งให้ผู้รับเหมา"
+// (ดู contractor-jobs.js ฟังก์ชัน setPoNumberWithFile / syncContractorJobPoToArchive) เพื่อให้ PO
+// ที่ออกจากระบบนี้ไปโผล่ใน "📜 Purchase Order Archive (PEAK Import)" ของ progress-claim-app ด้วย
+export const LEGACY_PO_COLLECTION = "legacyPurchaseOrders";

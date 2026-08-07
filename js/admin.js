@@ -605,7 +605,7 @@ async function main() {
     watchAllContractorJobs,
     sendJobForApproval,
     deleteContractorJob,
-    setPoNumber,
+    setPoNumberWithFile,
     approveJobDeliveryStep,
     rejectJobDeliveryStep,
     NEGOTIATION_STATUS,
@@ -1080,6 +1080,56 @@ async function main() {
     showToast(T.linkCopiedMsg);
   });
 
+  // ---------------- แนบไฟล์ PDF ใบสั่งซื้อ (PO) + เชื่อมข้อมูลเข้าคลัง PEAK Archive ----------------
+  let cjSetPoJobId = "";
+  function openSetPoModal(id) {
+    const j = contractorJobs.find((x) => x.id === id);
+    if (!j) return;
+    cjSetPoJobId = id;
+    document.getElementById("cj-po-number-input").value = j.poNumber || "";
+    document.getElementById("cj-po-file-input").value = "";
+    document.getElementById("cj-po-remove-file-checkbox").checked = false;
+    const currentFileEl = document.getElementById("cj-po-current-file");
+    const removeWrap = document.getElementById("cj-po-remove-file-wrap");
+    if (j.poFileData) {
+      currentFileEl.innerHTML = `📎 ${T.poFileCurrentLabel}: <a href="${j.poFileData}" download="${escapeHtmlGlobal(j.poFileName || "PO.pdf")}" target="_blank" rel="noopener">${escapeHtmlGlobal(j.poFileName || "PO.pdf")}</a>`;
+      removeWrap.style.display = "flex";
+    } else {
+      currentFileEl.textContent = "";
+      removeWrap.style.display = "none";
+    }
+    document.getElementById("cj-set-po-modal").style.display = "flex";
+  }
+  function closeSetPoModal() {
+    document.getElementById("cj-set-po-modal").style.display = "none";
+    cjSetPoJobId = "";
+  }
+  document.getElementById("close-cj-set-po-modal").addEventListener("click", closeSetPoModal);
+  document.getElementById("cancel-cj-set-po-btn").addEventListener("click", closeSetPoModal);
+  document.getElementById("save-cj-set-po-btn").addEventListener("click", async () => {
+    if (!cjSetPoJobId) return;
+    const poNumber = document.getElementById("cj-po-number-input").value.trim();
+    if (!poNumber) {
+      showToast(T.msgPoNumberRequired);
+      return;
+    }
+    const fileInput = document.getElementById("cj-po-file-input");
+    const file = (fileInput.files && fileInput.files[0]) || null;
+    const removeFile = document.getElementById("cj-po-remove-file-checkbox").checked;
+    const btn = document.getElementById("save-cj-set-po-btn");
+    btn.disabled = true;
+    try {
+      await setPoNumberWithFile(cjSetPoJobId, poNumber, file, removeFile);
+      showToast(T.msgCategorySaved);
+      closeSetPoModal();
+    } catch (e) {
+      console.error(e);
+      showToast(T.errorPrefix + e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   // ---------------- ตารางงานผู้รับเหมา (real-time) ----------------
   let contractorJobs = [];
   watchAllContractorJobs(
@@ -1167,8 +1217,13 @@ async function main() {
         // ---- PO / Delivery cell (ระบบส่งมอบงาน เฟส 2 ขั้นที่ 1) ----
         let deliveryCell = `<span class="hint">-</span>`;
         if (j.status === CONTRACTOR_JOB_STATUS.CONFIRMED || j.status === CONTRACTOR_JOB_STATUS.DONE) {
+          const poFileBadge = j.poFileData
+            ? ` <a href="${j.poFileData}" download="${escapeHtmlGlobal(j.poFileName || "PO.pdf")}" target="_blank" rel="noopener" title="📎 ${escapeHtmlGlobal(j.poFileName || "PO.pdf")}">📎</a>`
+            : "";
           const poLine = j.poNumber
-            ? `<div class="hint" style="font-weight:600;">🧾 ${escapeHtmlGlobal(j.poNumber)} <button class="btn btn-outline btn-sm cj-set-po-btn" data-id="${j.id}" style="padding:1px 6px; font-size:11px;">✏️</button></div>`
+            ? `<div class="hint" style="font-weight:600;">🧾 ${escapeHtmlGlobal(j.poNumber)}${poFileBadge} <button class="btn btn-outline btn-sm cj-set-po-btn" data-id="${j.id}" style="padding:1px 6px; font-size:11px;">✏️</button></div>${
+                j.poFileData ? `<div class="hint" style="color:#1e40af;">${T.poFileLinkedBadge}</div>` : ""
+              }`
             : `<button class="btn btn-outline btn-sm cj-set-po-btn" data-id="${j.id}">${T.btnSetPoNumber}</button>`;
           const photoCountBadge = (j.deliveryImages || []).length ? ` 🖼️${j.deliveryImages.length}` : "";
           const roundBadge = j.inspectionRound ? `<div class="hint" style="margin-top:2px;">🔍 ${T.inspectionRoundLabel} ${j.inspectionRound}${j.lastInspectionResult === "failed" ? " ❌" : ""}</div>` : "";
@@ -1258,20 +1313,7 @@ async function main() {
     });
     // ---- PO / ตรวจรับงาน / ใบส่งมอบงาน PDF (เฟส 2 ขั้นที่ 1) ----
     tbody.querySelectorAll(".cj-set-po-btn").forEach((btn) => {
-      btn.addEventListener("click", async () => {
-        const id = btn.dataset.id;
-        const j = contractorJobs.find((x) => x.id === id);
-        if (!j) return;
-        const poNumber = prompt(T.promptSetPoNumber, j.poNumber || "");
-        if (poNumber === null) return; // ผู้ใช้กดยกเลิก
-        try {
-          await setPoNumber(id, poNumber);
-          showToast(T.msgCategorySaved);
-        } catch (e) {
-          console.error(e);
-          showToast(T.errorPrefix + e.message);
-        }
-      });
+      btn.addEventListener("click", () => openSetPoModal(btn.dataset.id));
     });
     // ---- ระบบต่อรองราคา (Price Negotiation) ----
     tbody.querySelectorAll(".cj-accept-offer-btn").forEach((btn) => {
