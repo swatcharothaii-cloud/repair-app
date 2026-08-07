@@ -80,6 +80,16 @@
         หมายเหตุ: ชื่อโปรเจกต์จะถูกบันทึกเป็นภาษาไทยตามที่กรอกจริง การปิดใช้งานจะซ่อนจากฟอร์มแจ้งซ่อมใหม่ แต่ยังเห็นในแดชบอร์ด/ตัวสลับโปรเจกต์เหมือนเดิม เพื่อไม่กระทบข้อมูลเก่า /
         注意：项目名称将以泰文实际填写内容保存。停用某项目只会将其从新报修表单中隐藏，仍会显示在仪表板／项目切换器中，不影响旧数据
       </p>
+
+      <div id="project-merge-tool" style="margin-top:16px; padding:12px 14px; background:#f8fafc; border:1px solid var(--border); border-radius:12px;">
+        <div style="font-weight:600; margin-bottom:8px;">🔀 Merge Duplicate Projects / รวมโปรเจกต์ที่ซ้ำกัน / 合并重复项目</div>
+        <p class="hint">Tick 2 or more projects above that are actually the same place, then type the name to merge them into below (type a brand-new name, or match one of the ticked projects' names exactly to keep using that name). All historical data — repair tickets, contractor jobs/POs, PEAK archive, progress claims — gets moved over automatically. This can't be undone (merged-away projects are disabled, not deleted). / ติ๊กเลือกโปรเจกต์ด้านบนตั้งแต่ 2 รายการขึ้นไปที่จริงๆ แล้วเป็นที่เดียวกัน แล้วพิมพ์ชื่อที่จะรวมเป็นด้านล่างนี้ (ตั้งชื่อใหม่ก็ได้ หรือพิมพ์ให้ตรงกับชื่อของโปรเจกต์ที่ติ๊กไว้อันหนึ่งเพื่อคงชื่อนั้นไว้) ข้อมูลเก่าทั้งหมด — งานแจ้งซ่อม/งานผู้รับเหมา-PO/คลัง PEAK/ใบเบิกงวดงาน — จะถูกย้ายมาให้อัตโนมัติ กู้คืนไม่ได้ (โปรเจกต์ที่ถูกรวมทิ้งจะถูกปิดใช้งาน ไม่ได้ลบถาวร)</p>
+        <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-top:8px;">
+          <input type="text" id="proj-merge-target-label" placeholder="Target name / ชื่อที่จะรวมเป็น" style="flex:1; min-width:200px;">
+          <button type="button" class="btn btn-primary btn-sm" id="proj-merge-btn">🔀 Merge selected / รวมที่เลือกไว้</button>
+        </div>
+        <p class="hint" id="proj-merge-result" style="margin-top:8px;"></p>
+      </div>
     </div>
   </details>
 

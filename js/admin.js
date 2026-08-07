@@ -88,6 +88,7 @@ async function main() {
   } = await import("./firebase-init.js");
   const { loadCategories, addCategory, updateCategory } = await import("./categories.js");
   const { loadProjects, addProject, updateProject } = await import("./projects.js");
+  const { mergeProjectsGroup } = await import("./project-merge.js");
   const { loadAdmins, addAdmin, updateAdmin } = await import("./admins.js");
 
   // รายชื่อแอดมิน — โหลดจาก Firestore (เพิ่ม/แก้ไข/ปิดใช้งานเองได้จากส่วน "จัดการรายชื่อแอดมิน" ด้านล่าง)
@@ -405,6 +406,7 @@ async function main() {
       .map(
         (p) => `
         <div class="cat-manage-row ${p.active === false ? "cat-disabled" : ""}" data-proj-id="${p.id}">
+          <input type="checkbox" class="proj-merge-checkbox" data-id="${p.id}" title="Tick to include in merge / ติ๊กเพื่อรวมโปรเจกต์นี้">
           <input type="text" class="cat-label-input proj-label-input" value="${escapeHtmlGlobal(p.label || "")}" data-field="label">
           <input type="color" class="cat-color-input" value="${p.color || "#4f46e5"}" data-field="color">
           ${p.active === false ? `<span class="badge" style="background:#fee2e2; color:#991b1b;">${T.badgeProjectDisabled}</span>` : ""}
@@ -490,6 +492,52 @@ async function main() {
       showToast(T.errorPrefix + err.message);
     } finally {
       submitBtn.disabled = false;
+    }
+  });
+
+  // ---------------- รวมโปรเจกต์ที่ซ้ำกัน (เช่น "Plus City Condo" + "Plus City Park" → "Plus City") ----------------
+  document.getElementById("proj-merge-btn").addEventListener("click", async () => {
+    const checked = Array.from(document.querySelectorAll(".proj-merge-checkbox:checked")).map((cb) => cb.dataset.id);
+    const targetLabel = document.getElementById("proj-merge-target-label").value.trim();
+    const resultEl = document.getElementById("proj-merge-result");
+    if (checked.length < 2) {
+      showToast("Tick at least 2 projects to merge / ติ๊กเลือกอย่างน้อย 2 โปรเจกต์");
+      return;
+    }
+    if (!targetLabel) {
+      showToast(T.msgProjectNameRequired);
+      return;
+    }
+    const sourceProjects = checked.map((id) => projects.find((p) => p.id === id)).filter(Boolean);
+    const names = sourceProjects.map((p) => p.label).join('", "');
+    if (
+      !confirm(
+        `Merge "${names}" into "${targetLabel}"? All historical data will be moved over and the other project(s) will be disabled. This can't be undone. / ยืนยันรวม "${names}" เป็น "${targetLabel}"? ข้อมูลเก่าทั้งหมดจะถูกย้ายมาให้ และโปรเจกต์อื่นที่เหลือจะถูกปิดใช้งาน กู้คืนไม่ได้`
+      )
+    ) {
+      return;
+    }
+    const btn = document.getElementById("proj-merge-btn");
+    btn.disabled = true;
+    resultEl.textContent = "Merging... / กำลังรวมข้อมูล...";
+    try {
+      const result = await mergeProjectsGroup(sourceProjects, targetLabel);
+      projects = await loadProjects();
+      refreshProjectSelects();
+      renderProjectManageList();
+      renderAll();
+      document.getElementById("proj-merge-target-label").value = "";
+      const summary = Object.entries(result.counts)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(", ");
+      document.getElementById("proj-merge-result").textContent = `✅ Merged into "${result.survivorLabel}" — records updated: ${summary || "0"}`;
+      showToast(T.msgProjectSaved);
+    } catch (e) {
+      console.error(e);
+      resultEl.textContent = "";
+      showToast(T.errorPrefix + e.message);
+    } finally {
+      btn.disabled = false;
     }
   });
 

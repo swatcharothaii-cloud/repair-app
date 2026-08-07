@@ -160,12 +160,16 @@ function render() {
 
   contentEl.innerHTML = `
     ${defectBanner}
-    <span class="badge" style="background:${typeStyle.bg}; color:${typeStyle.text}; border:1px solid ${typeStyle.border}; font-weight:700; margin-bottom:10px;">${typeStyle.icon} ${jobTypeTri(job.type)}</span>
-    <h3 style="margin:8px 0 4px;">${escapeHtml(job.siteName || job.project || "-")}</h3>
-    ${job.project ? `<div class="meta">📍 Project / โปรเจกต์ / 项目: ${escapeHtml(job.project)}</div>` : ""}
-    ${job.contractorName ? `<div class="meta">👷 ${T.contractorLabel}: ${escapeHtml(job.contractorName)}</div>` : ""}
-    <div class="desc" style="margin-top:10px;">${escapeHtml(job.description || "")}</div>
-    ${photosHtml ? `<div class="meta" style="margin-top:12px;">🖼️ Photos / รูปภาพ / 照片</div><div class="ticket-thumbs">${photosHtml}</div>` : ""}
+    <div class="job-detail-grid">
+      <div class="job-detail-main">
+        <span class="badge" style="background:${typeStyle.bg}; color:${typeStyle.text}; border:1px solid ${typeStyle.border}; font-weight:700; margin-bottom:10px;">${typeStyle.icon} ${jobTypeTri(job.type)}</span>
+        <h3 style="margin:8px 0 4px;">${escapeHtml(job.siteName || job.project || "-")}</h3>
+        ${job.project ? `<div class="meta">📍 Project / โปรเจกต์ / 项目: ${escapeHtml(job.project)}</div>` : ""}
+        ${job.contractorName ? `<div class="meta">👷 ${T.contractorLabel}: ${escapeHtml(job.contractorName)}</div>` : ""}
+        <div class="desc" style="margin-top:10px;">${escapeHtml(job.description || "")}</div>
+      </div>
+      ${photosHtml ? `<div class="job-detail-photos"><div class="meta">🖼️ Photos / รูปภาพ / 照片</div><div class="ticket-thumbs">${photosHtml}</div></div>` : ""}
+    </div>
     <div id="job-action"></div>
   `;
 

@@ -511,7 +511,27 @@ a.btn-danger { color: var(--danger); }
 .ticket-card .meta { font-size: 12.5px; color: var(--text-muted); margin-top: 4px; }
 .ticket-card .desc { font-size: 13.5px; color: var(--text); margin-top: 8px; line-height:1.5; }
 .ticket-thumbs { display:flex; gap:6px; margin-top:10px; overflow-x:auto; }
-.ticket-thumbs img { width:56px; height:56px; object-fit:cover; border-radius:10px; flex-shrink:0; }
+.ticket-thumbs img { width:56px; height:56px; object-fit:cover; border-radius:10px; flex-shrink:0; cursor:pointer; }
+
+/* ============================================================
+   หน้ารายละเอียดงานสำหรับผู้รับเหมา (contractor.html) — วางรูปภาพประกอบไว้ด้านข้างเนื้อหาหลัก
+   และขยายให้ใหญ่ขึ้น (เดิมเป็นแถบรูปเล็กๆ 56x56px อยู่กลางเนื้อหา) จอกว้าง (แท็บเล็ต/เดสก์ท็อป) จะเห็นเป็น
+   2 คอลัมน์ ส่วนจอมือถือแคบจะยุบกลับมาเป็นแถวรูปแนวนอนใต้เนื้อหาเหมือนเดิม แต่รูปใหญ่ขึ้นกว่าเดิม
+   ============================================================ */
+.job-detail-grid { display:flex; gap:20px; flex-wrap:wrap; align-items:flex-start; }
+.job-detail-main { flex:1 1 240px; min-width:0; }
+.job-detail-main .badge { white-space:normal; text-align:left; }
+.job-detail-photos { flex:0 0 220px; max-width:100%; }
+.job-detail-photos .meta { margin-top:0 !important; }
+.job-detail-photos .ticket-thumbs { flex-direction:column; overflow-x:visible; gap:10px; }
+.job-detail-photos .ticket-thumbs img { width:100%; height:160px; border-radius:14px; }
+
+@media (max-width: 520px) {
+  .job-detail-grid { flex-direction:column; }
+  .job-detail-photos { flex:1 1 100%; order:2; }
+  .job-detail-photos .ticket-thumbs { flex-direction:row; overflow-x:auto; gap:8px; }
+  .job-detail-photos .ticket-thumbs img { width:110px; height:110px; flex-shrink:0; }
+}
 
 .overdue { color: var(--danger); font-weight: 500; }
 
