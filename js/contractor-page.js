@@ -1,11 +1,15 @@
 import { COMPANY, CONTRACTOR_JOB_TYPE, CONTRACTOR_JOB_TYPE_STYLE, CONTRACTOR_JOB_STATUS, MAX_IMAGE_MB } from "./config.js";
 import { renderCompanyBrandBar, showToast, formatDateThai, todayStr } from "./utils.js";
 import { T, jobTypeTri, contractorJobStatusTri } from "./i18n.js";
-import { watchContractorJob, respondFixJob, acceptQuoteJob, rejectJob, submitDelivery } from "./contractor-jobs.js";
+import {
+  watchContractorJob, respondFixJob, acceptQuoteJob, rejectJob, submitDelivery,
+  NEGOTIATION_STATUS, acceptNegotiationOffer, submitNegotiationCounterOffer,
+} from "./contractor-jobs.js";
 import { compressImageToDataUrl } from "./image-compress.js";
 
 const MAX_DELIVERY_IMAGES = 20; // ภาพส่งมอบงาน แนบได้มากกว่าภาพก่อนซ่อมทั่วไป (ซึ่งจำกัดที่ MAX_IMAGES/5 ภาพ)
 let deliveryImages = []; // [{url}] เก็บระหว่างกรอกฟอร์มส่งมอบงาน ก่อนกดส่ง
+let showCounterForm = false; // true เมื่อผู้รับเหมากด "เสนอราคาใหม่" กำลังกรอกฟอร์มข้อเสนอโต้กลับ
 
 renderCompanyBrandBar("brand-bar", COMPANY);
 
@@ -58,7 +62,11 @@ function render() {
       actionHtml = quoteFormHtml();
     }
   } else if (job.status === CONTRACTOR_JOB_STATUS.CONFIRMED) {
-    const confirmedDetailsHtml = isFixLike
+    // งานที่มีระบบต่อรองราคา (fix ที่มีราคา + quote ทุกงาน) แสดงการ์ดต่อรองราคาแบบไดนามิกแทนการ์ดสรุปนิ่งๆ เดิม
+    const hasNegotiation = !!(job.negotiation && Array.isArray(job.negotiation.offers) && job.negotiation.offers.length);
+    const confirmedDetailsHtml = hasNegotiation
+      ? negotiationSectionHtml(job, isFixLike)
+      : isFixLike
       ? `<div class="card" style="background:#d1fae5; border:1px solid #6ee7b7; margin-top:16px;">
             <strong>✅ ${T.contractorSubmittedThanks}</strong>
             <div class="meta" style="margin-top:8px;">📅 ${T.contractorSiteVisitDateLabel}: ${formatDateThai(job.siteVisitDate)}</div>
@@ -221,6 +229,10 @@ function fixFormHtml(job) {
       <div class="field">
         <label>💰 ${T.contractorRepairPriceLabel}</label>
         <input type="number" id="f-repair-price" min="0" step="0.01" placeholder="e.g. 8000">
+      </div>
+      <div class="field">
+        <label>📝 ${T.contractorRepairNoteLabel}</label>
+        <textarea id="f-repair-note" rows="2"></textarea>
       </div>` : ""}
       <button class="btn btn-primary btn-block" id="submit-fix-btn">${T.contractorSubmitBtn}</button>
     </div>
@@ -245,6 +257,97 @@ function quoteFormHtml() {
       <button class="btn btn-primary btn-block" id="submit-quote-btn">${T.contractorSubmitBtn}</button>
     </div>
   `;
+}
+
+// ============ ระบบต่อรองราคา (Price Negotiation) — สำหรับงาน fix (ที่มีราคา) และ quote ============
+function negotiationOfferLabel(days) {
+  return days != null ? `${days} วัน` : "-";
+}
+function negotiationHistoryHtml(offers) {
+  const rows = offers
+    .map((o) => {
+      const fromLabel = o.by === "admin" ? T.negotiationFromAdminLabel : T.negotiationFromContractorLabel;
+      const actionIcon = o.action === "accept" ? "✅" : "💬";
+      const priceText = o.price != null ? `฿${Number(o.price).toLocaleString("th-TH")}` : "-";
+      const at = o.at instanceof Date ? o.at : o.at && typeof o.at.toDate === "function" ? o.at.toDate() : null;
+      const atText = at ? at.toLocaleString("th-TH") : "";
+      return `
+      <div class="meta" style="margin-top:6px; padding-top:6px; border-top:1px dashed #e2e8f0;">
+        ${actionIcon} <b>${fromLabel}</b> — ${priceText}${o.days != null ? ` · ${negotiationOfferLabel(o.days)}` : ""}
+        ${o.note ? `<div>📝 ${escapeHtml(o.note)}</div>` : ""}
+        <div style="font-size:11px; color:#94a3b8;">${atText}</div>
+      </div>`;
+    })
+    .join("");
+  return `
+    <details style="margin-top:10px;">
+      <summary style="cursor:pointer; font-size:13px; color:#64748b;">📜 ${T.negotiationHistoryTitle}</summary>
+      ${rows}
+    </details>`;
+}
+function negotiationSectionHtml(job, isFixLike) {
+  const negotiation = job.negotiation;
+  const offers = negotiation.offers || [];
+  const lastOffer = offers[offers.length - 1];
+
+  if (negotiation.status === NEGOTIATION_STATUS.AGREED) {
+    return `
+      <div class="card" style="background:#d1fae5; border:1px solid #6ee7b7; margin-top:16px;">
+        <strong>✅ ${T.negotiationAgreedMsg}</strong>
+        <div class="meta" style="margin-top:8px;">💰 ${lastOffer?.price != null ? `฿${Number(lastOffer.price).toLocaleString("th-TH")}` : "-"}${lastOffer?.days != null ? ` · ⏱️ ${negotiationOfferLabel(lastOffer.days)}` : ""}</div>
+        ${negotiationHistoryHtml(offers)}
+      </div>`;
+  }
+
+  const isMyTurn = negotiation.status === NEGOTIATION_STATUS.AWAITING_CONTRACTOR;
+  const waitingCard = `
+    <div class="meta" style="margin-top:8px;">
+      ${T.negotiationLatestOfferLabel} (${lastOffer?.by === "admin" ? T.negotiationFromAdminLabel : T.negotiationFromContractorLabel}):
+      💰 ${lastOffer?.price != null ? `฿${Number(lastOffer.price).toLocaleString("th-TH")}` : "-"}${lastOffer?.days != null ? ` · ⏱️ ${negotiationOfferLabel(lastOffer.days)}` : ""}
+    </div>
+    ${lastOffer?.note ? `<div class="meta">📝 ${escapeHtml(lastOffer.note)}</div>` : ""}
+  `;
+
+  if (!isMyTurn) {
+    return `
+      <div class="card" style="background:#fef3c7; border:1px solid #fde68a; margin-top:16px;">
+        <strong>⏳ ${T.negotiationAwaitingOtherMsg}</strong>
+        ${waitingCard}
+        ${negotiationHistoryHtml(offers)}
+      </div>`;
+  }
+
+  const counterFormHtml = showCounterForm
+    ? `
+    <div class="field" style="margin-top:12px;">
+      <label>💰 ${T.negotiationOfferPriceLabel}</label>
+      <input type="number" id="f-counter-price" min="0" step="0.01" placeholder="e.g. 25000" value="${lastOffer?.price ?? ""}">
+    </div>
+    <div class="field">
+      <label>⏱️ ${T.negotiationOfferDaysLabel}</label>
+      <input type="number" id="f-counter-days" min="1" step="1" placeholder="e.g. 5" value="${lastOffer?.days ?? ""}">
+    </div>
+    <div class="field">
+      <label>📝 ${T.negotiationOfferNoteLabel}</label>
+      <textarea id="f-counter-note" rows="2"></textarea>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <button class="btn btn-primary btn-block" id="submit-counter-offer-btn">${T.btnSubmitCounterOffer}</button>
+      <button class="btn btn-outline btn-block" id="cancel-counter-offer-btn">${T.btnCancelCounterOffer}</button>
+    </div>`
+    : `
+    <div style="display:flex; gap:10px; margin-top:12px;">
+      <button class="btn btn-primary btn-block" id="accept-offer-btn">${T.btnAcceptOffer}</button>
+      <button class="btn btn-outline btn-block" id="show-counter-form-btn">${T.btnCounterOffer}</button>
+    </div>`;
+
+  return `
+    <div class="card" style="background:#dbeafe; border:1px solid #93c5fd; margin-top:16px;">
+      <strong>🤝 ${T.negotiationAwaitingYouMsg}</strong>
+      ${waitingCard}
+      ${counterFormHtml}
+      ${negotiationHistoryHtml(offers)}
+    </div>`;
 }
 
 function wireActionHandlers(job) {
@@ -276,13 +379,15 @@ function wireActionHandlers(job) {
       const repairDays = document.getElementById("f-repair-days").value;
       const priceInput = document.getElementById("f-repair-price");
       const repairPrice = priceInput ? priceInput.value : "";
+      const noteInput = document.getElementById("f-repair-note");
+      const repairNote = noteInput ? noteInput.value : "";
       const priceRequired = job.type === CONTRACTOR_JOB_TYPE.FIX;
       if (!siteVisitDate || !repairDays || (priceRequired && !repairPrice)) {
         showToast("Please fill in all fields / กรุณากรอกข้อมูลให้ครบ / 请填写所有字段");
         return;
       }
       try {
-        await respondFixJob(job.id, { siteVisitDate, repairDays, repairPrice });
+        await respondFixJob(job.id, { siteVisitDate, repairDays, repairPrice, repairNote });
         showToast(T.contractorSubmittedThanks);
       } catch (e) {
         console.error(e);
@@ -359,6 +464,59 @@ function wireActionHandlers(job) {
       } catch (e) {
         console.error(e);
         showToast(T.errorPrefix + e.message);
+      }
+    });
+  }
+
+  // ---- ระบบต่อรองราคา (Price Negotiation) ----
+  const acceptOfferBtn = document.getElementById("accept-offer-btn");
+  if (acceptOfferBtn) {
+    acceptOfferBtn.addEventListener("click", async () => {
+      if (!confirm(T.btnAcceptOffer + "?")) return;
+      acceptOfferBtn.disabled = true;
+      try {
+        await acceptNegotiationOffer(job.id, job.type, job.negotiation, "contractor", "");
+        showToast(T.contractorSubmittedThanks);
+      } catch (e) {
+        console.error(e);
+        showToast(T.errorPrefix + e.message);
+        acceptOfferBtn.disabled = false;
+      }
+    });
+  }
+  const showCounterFormBtn = document.getElementById("show-counter-form-btn");
+  if (showCounterFormBtn) {
+    showCounterFormBtn.addEventListener("click", () => {
+      showCounterForm = true;
+      render();
+    });
+  }
+  const cancelCounterOfferBtn = document.getElementById("cancel-counter-offer-btn");
+  if (cancelCounterOfferBtn) {
+    cancelCounterOfferBtn.addEventListener("click", () => {
+      showCounterForm = false;
+      render();
+    });
+  }
+  const submitCounterOfferBtn = document.getElementById("submit-counter-offer-btn");
+  if (submitCounterOfferBtn) {
+    submitCounterOfferBtn.addEventListener("click", async () => {
+      const price = document.getElementById("f-counter-price").value;
+      const days = document.getElementById("f-counter-days").value;
+      const note = document.getElementById("f-counter-note").value;
+      if (!price) {
+        showToast("Please fill in all fields / กรุณากรอกข้อมูลให้ครบ / 请填写所有字段");
+        return;
+      }
+      submitCounterOfferBtn.disabled = true;
+      try {
+        await submitNegotiationCounterOffer(job.id, job.type, job.negotiation, "contractor", { price, days, note });
+        showCounterForm = false;
+        showToast(T.contractorSubmittedThanks);
+      } catch (e) {
+        console.error(e);
+        showToast(T.errorPrefix + e.message);
+        submitCounterOfferBtn.disabled = false;
       }
     });
   }

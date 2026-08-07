@@ -277,6 +277,23 @@ export const T = {
   contractorQuoteNoteLabel: tri("Additional notes", "หมายเหตุเพิ่มเติม", "备注"),
   contractorSubmittedThanks: tri("Submitted — thank you!", "ส่งข้อมูลเรียบร้อยแล้ว ขอบคุณครับ/ค่ะ", "已提交，谢谢！"),
   contractorRejectedMsg: tri("You have rejected this job", "คุณได้ปฏิเสธงานนี้แล้ว", "您已拒绝此工程"),
+  contractorRepairNoteLabel: tri("Additional notes", "หมายเหตุเพิ่มเติม", "备注"),
+
+  // -------- ระบบต่อรองราคา (Price Negotiation) — ใช้กับงาน fix (ที่มีราคา) และ quote --------
+  negotiationAgreedMsg: tri("Price agreed", "ตกลงราคากันแล้ว", "价格已达成一致"),
+  negotiationAwaitingYouMsg: tri("Waiting for your response to the latest offer", "รอคุณตอบรับ/ต่อรองข้อเสนอล่าสุด", "等待您回复最新报价"),
+  negotiationAwaitingOtherMsg: tri("Waiting for the office team to respond", "รอทีมงานตอบรับ/ต่อรองราคา", "等待办公室团队回复"),
+  negotiationLatestOfferLabel: tri("Latest offer", "ข้อเสนอล่าสุด", "最新报价"),
+  negotiationFromContractorLabel: tri("From you (contractor)", "จากคุณ (ผู้รับเหมา)", "来自您（承包商）"),
+  negotiationFromAdminLabel: tri("From office team", "จากทีมงาน", "来自办公室团队"),
+  btnAcceptOffer: tri("✅ Accept this price", "✅ ยอมรับราคานี้", "✅ 接受此价格"),
+  btnCounterOffer: tri("🔁 Propose a different price", "🔁 เสนอราคาใหม่", "🔁 提出新报价"),
+  btnSubmitCounterOffer: tri("Submit new offer", "ส่งข้อเสนอใหม่", "提交新报价"),
+  btnCancelCounterOffer: tri("Cancel", "ยกเลิก", "取消"),
+  negotiationHistoryTitle: tri("Negotiation history", "ประวัติการต่อรองราคา", "议价历史"),
+  negotiationOfferPriceLabel: tri("Proposed price (THB)", "ราคาที่เสนอ (บาท)", "提议价格（泰铢）"),
+  negotiationOfferDaysLabel: tri("Proposed days", "จำนวนวันที่เสนอ", "提议天数"),
+  negotiationOfferNoteLabel: tri("Message (optional)", "ข้อความ (ถ้ามี)", "留言（可选）"),
 
   // -------- ระบบส่งมอบงาน / PO (เฟส 2 ขั้นที่ 1) --------
   contractorPoLabel: tri("PO Number", "เลขที่ใบสั่งซื้อ (PO)", "采购单号（PO）"),

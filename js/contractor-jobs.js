@@ -13,8 +13,32 @@ import {
   serverTimestamp,
 } from "./firebase-init.js";
 import { CONTRACTOR_JOBS_COLLECTION } from "./firebase-init.js";
-import { CONTRACTOR_JOB_STATUS } from "./config.js";
+import { CONTRACTOR_JOB_STATUS, CONTRACTOR_JOB_TYPE } from "./config.js";
 import { createFreshApproval, approveApprovalStep, rejectApprovalStep, APPROVAL_STATUS } from "./approval.js";
+
+// ============================================================
+//  ระบบต่อรองราคา (Price Negotiation) — ใช้กับงานประเภท "fix" (ที่มีการเสนอราคาซ่อม) และ "quote" เท่านั้น
+//  (defect ไม่มีราคา จึงไม่มีการต่อรอง) ทั้งแอดมินและผู้รับเหมาต่อรองกลับไปมาได้ไม่จำกัดรอบ ("ปิงปอง" ราคา)
+//  จนกว่าฝ่ายใดฝ่ายหนึ่งจะกด "ยอมรับราคา" (negotiation.status = "agreed") — เก็บประวัติข้อเสนอทุกรอบไว้ใน
+//  negotiation.offers เพื่อดูย้อนหลังได้ทั้งสองฝั่ง
+//  ⚠️ "at" ของแต่ละ offer ต้องใช้เวลาฝั่ง client (new Date()) เสมอ ห้ามใช้ serverTimestamp() เพราะอยู่ใน
+//  array (negotiation.offers) ซึ่ง Firestore ไม่รองรับ serverTimestamp() ภายใน array (บทเรียนเดียวกับที่
+//  เคยเจอใน approval.js — ดูคอมเมนต์ที่นั่นประกอบ)
+// ============================================================
+export const NEGOTIATION_STATUS = {
+  AWAITING_ADMIN: "awaiting_admin", // มีข้อเสนอใหม่จากผู้รับเหมา รอทีมงานตอบรับ/ต่อรอง
+  AWAITING_CONTRACTOR: "awaiting_contractor", // มีข้อเสนอใหม่จากทีมงาน รอผู้รับเหมาตอบรับ/ต่อรอง
+  AGREED: "agreed", // ตกลงราคากันแล้ว จบการต่อรอง
+};
+
+// คืนชื่อฟิลด์ราคา/จำนวนวัน "อย่างเป็นทางการ" บนตัวเอกสาร ที่ต้องอัปเดตให้ตรงกับข้อเสนอล่าสุดเสมอ
+// (เพื่อให้โค้ดเดิมที่อ่าน job.quotePrice/job.repairPrice ตรงๆ เช่นใบส่งมอบงาน/การคำนวณเบิกงวดงาน ยังทำงานถูกต้อง)
+function officialPriceFields(jobType, price, days, note) {
+  if (jobType === CONTRACTOR_JOB_TYPE.QUOTE) {
+    return { quotePrice: price, quoteDays: days, quoteNote: note };
+  }
+  return { repairPrice: price, repairDays: days };
+}
 
 function generateJobId() {
   const d = new Date();
@@ -115,16 +139,25 @@ export async function rejectJobPublic(id, approverName) {
 // งานประเภท "งานแก้ไข" / "งานแก้ไขที่ตรวจไม่ผ่าน" — ผู้รับเหมายืนยัน/ระบุวันเข้าหน้างาน + จำนวนวันซ่อม
 // (ใช้ร่วมกันทั้ง fix และ defect — ต้องกดรับงานนี้ก่อนถึงจะกรอกได้)
 // repairPrice: ใช้เฉพาะ fix เท่านั้น (defect ไม่ส่งค่านี้มา เพราะเป็นงานแก้ไขที่ตรวจไม่ผ่าน ไม่คิดเงินเพิ่ม)
-export async function respondFixJob(id, { siteVisitDate, repairDays, repairPrice }) {
-  await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), {
+export async function respondFixJob(id, { siteVisitDate, repairDays, repairPrice, repairNote }) {
+  const hasPrice = repairPrice != null && repairPrice !== "";
+  const patch = {
     siteVisitDate,
     repairDays: Number(repairDays),
-    repairPrice: repairPrice != null && repairPrice !== "" ? Number(repairPrice) : null,
+    repairPrice: hasPrice ? Number(repairPrice) : null,
     contractorResponse: "confirmed",
     status: CONTRACTOR_JOB_STATUS.CONFIRMED,
     respondedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-  });
+  };
+  // มีราคาเสนอ (เฉพาะงานประเภท "fix" — defect ไม่ส่งราคามา) → เริ่มกระบวนการต่อรองราคา ให้ทีมงานตอบรับ/ต่อรองต่อ
+  if (hasPrice) {
+    patch.negotiation = {
+      status: NEGOTIATION_STATUS.AWAITING_ADMIN,
+      offers: [{ by: "contractor", action: "offer", price: Number(repairPrice), days: Number(repairDays), note: (repairNote || "").trim(), at: new Date() }],
+    };
+  }
+  await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), patch);
 }
 
 // ปฏิเสธงาน — ใช้ร่วมกันได้ทั้ง 3 ประเภทงาน (fix / quote / defect)
@@ -137,17 +170,52 @@ export async function rejectJob(id) {
   });
 }
 
-// งานประเภท "งานใหม่ที่ต้องเสนอราคา" — ผู้รับเหมารับงาน + เสนอจำนวนวัน/ราคา
+// งานประเภท "งานใหม่ที่ต้องเสนอราคา" — ผู้รับเหมารับงาน + เสนอจำนวนวัน/ราคา (= ข้อเสนอแรกของการต่อรองราคา)
 export async function acceptQuoteJob(id, { quoteDays, quotePrice, quoteNote }) {
+  const price = Number(quotePrice);
+  const days = Number(quoteDays);
+  const note = (quoteNote || "").trim();
   await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), {
     contractorResponse: "accepted",
-    quoteDays: Number(quoteDays),
-    quotePrice: Number(quotePrice),
-    quoteNote: (quoteNote || "").trim(),
+    quoteDays: days,
+    quotePrice: price,
+    quoteNote: note,
     status: CONTRACTOR_JOB_STATUS.CONFIRMED,
     respondedAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
+    negotiation: {
+      status: NEGOTIATION_STATUS.AWAITING_ADMIN,
+      offers: [{ by: "contractor", action: "offer", price, days, note, at: new Date() }],
+    },
   });
+}
+
+// ฝ่ายใดฝ่ายหนึ่ง (by: "admin" | "contractor") กด "ยอมรับราคา" ข้อเสนอล่าสุด — จบการต่อรองทันที
+// currentNegotiation: ค่า job.negotiation ปัจจุบันที่มีอยู่ในมือ (จากอ่านครั้งล่าสุด) ใช้ต่อประวัติ ไม่ทับของเดิม
+export async function acceptNegotiationOffer(id, jobType, currentNegotiation, by, note) {
+  const offers = (currentNegotiation && currentNegotiation.offers) || [];
+  const lastOffer = offers[offers.length - 1];
+  const entry = { by, action: "accept", price: lastOffer?.price ?? null, days: lastOffer?.days ?? null, note: (note || "").trim(), at: new Date() };
+  const patch = {
+    negotiation: { status: NEGOTIATION_STATUS.AGREED, offers: [...offers, entry] },
+    updatedAt: serverTimestamp(),
+  };
+  if (lastOffer) Object.assign(patch, officialPriceFields(jobType, lastOffer.price, lastOffer.days, lastOffer.note));
+  await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), patch);
+}
+
+// ฝ่ายใดฝ่ายหนึ่ง (by: "admin" | "contractor") กด "ต่อรองราคาใหม่" — เสนอราคา/จำนวนวันใหม่ สลับให้อีกฝ่ายตอบรับ/
+// ต่อรองต่อ ทำได้ไม่จำกัดรอบจนกว่าจะมีฝ่ายใดฝ่ายหนึ่งกดยอมรับ (acceptNegotiationOffer ด้านบน)
+export async function submitNegotiationCounterOffer(id, jobType, currentNegotiation, by, { price, days, note }) {
+  const offers = (currentNegotiation && currentNegotiation.offers) || [];
+  const entry = { by, action: "offer", price: Number(price), days: days != null && days !== "" ? Number(days) : null, note: (note || "").trim(), at: new Date() };
+  const nextStatus = by === "admin" ? NEGOTIATION_STATUS.AWAITING_CONTRACTOR : NEGOTIATION_STATUS.AWAITING_ADMIN;
+  const patch = {
+    negotiation: { status: nextStatus, offers: [...offers, entry] },
+    updatedAt: serverTimestamp(),
+  };
+  Object.assign(patch, officialPriceFields(jobType, entry.price, entry.days, entry.note));
+  await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), patch);
 }
 
 // สำหรับหน้าแอดมิน — subscribe งานทั้งหมด (ใหม่สุดก่อน)

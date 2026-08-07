@@ -185,6 +185,8 @@ async function main() {
   let activeAfterImages = []; // [{url}] รูป "หลังซ่อม" ของรายการที่กำลังเปิดดูอยู่
   let unsubRequests = null; // ประกาศไว้ตั้งแต่ต้น main() เพราะ showDashboard()/startDashboard() อาจถูกเรียกทันทีด้านล่าง
   // (กรณีแอดมินเคยเลือกชื่อไว้แล้ว มี identity ที่จำไว้ใน localStorage) ก่อนที่โค้ดจะไล่ลงมาถึงบรรทัดประกาศตัวแปรนี้แบบเดิม
+  let lastPeriodItems = []; // เหตุผลเดียวกับ unsubRequests ด้านบน — renderAll()/renderTable() (ประกาศไว้ล่างสุดของ main())
+  // อาจถูกเรียกจาก onSnapshot callback ของ startDashboard() ก่อนที่โค้ดจะไล่ลงมาถึงบรรทัดประกาศตัวแปรนี้แบบเดิม
 
   // ---------------- IDENTITY (ไม่มีรหัสผ่าน) ----------------
   const idGrid = document.getElementById("admin-id-grid");
@@ -606,6 +608,9 @@ async function main() {
     setPoNumber,
     approveJobDeliveryStep,
     rejectJobDeliveryStep,
+    NEGOTIATION_STATUS,
+    acceptNegotiationOffer,
+    submitNegotiationCounterOffer,
   } = await import("./contractor-jobs.js");
   const { ensureApproval, renderApprovalStepper, APPROVAL_STATUS, APPROVAL_STEP_DEFS } = await import("./approval.js");
 
@@ -1085,6 +1090,30 @@ async function main() {
     () => showToast(T.msgConnectFailCheckInternet)
   );
 
+  // แสดงสถานะการต่อรองราคา + ปุ่ม "ยอมรับ/ต่อรอง" (เฉพาะเมื่อถึงตาแอดมินต้องตอบ) ในตารางงานผู้รับเหมา
+  // ใช้ได้ทั้งงาน quote และ fix (ที่มีราคา) — defect ไม่มี negotiation object จึงคืนค่าว่างเสมอ
+  function negotiationCellHtml(j) {
+    const n = j.negotiation;
+    if (!n || !Array.isArray(n.offers) || !n.offers.length) return "";
+    const lastOffer = n.offers[n.offers.length - 1];
+    const priceText = lastOffer.price != null ? `฿${Number(lastOffer.price).toLocaleString("th-TH")}` : "-";
+    const daysText = lastOffer.days != null ? ` · ${lastOffer.days} วัน` : "";
+    if (n.status === NEGOTIATION_STATUS.AGREED) {
+      return `<div class="hint" style="margin-top:4px; color:#065f46; font-weight:600;">✅ ตกลงราคาแล้ว ${priceText}${daysText}</div>`;
+    }
+    if (n.status === NEGOTIATION_STATUS.AWAITING_CONTRACTOR) {
+      return `<div class="hint" style="margin-top:4px; color:#92400e;">⏳ เสนอไป ${priceText}${daysText} รอผู้รับเหมาตอบรับ/ต่อรอง</div>`;
+    }
+    // AWAITING_ADMIN — ผู้รับเหมาเสนอราคามาแล้ว ถึงตาแอดมินต้องตอบ
+    return `
+      <div class="hint" style="margin-top:4px; color:#1e40af; font-weight:600;">🤝 ผู้รับเหมาเสนอ ${priceText}${daysText}</div>
+      ${lastOffer.note ? `<div class="hint" style="margin-top:2px;">📝 ${escapeHtmlGlobal(lastOffer.note)}</div>` : ""}
+      <div style="display:flex; gap:4px; margin-top:4px;">
+        <button class="btn btn-sm cj-accept-offer-btn" data-id="${j.id}" style="background:#d1fae5; color:#065f46; border:1px solid #6ee7b7; padding:2px 6px; font-size:11px;">${T.btnAcceptOffer}</button>
+        <button class="btn btn-sm cj-counter-offer-btn" data-id="${j.id}" style="background:#dbeafe; color:#1e40af; border:1px solid #93c5fd; padding:2px 6px; font-size:11px;">${T.btnCounterOffer}</button>
+      </div>`;
+  }
+
   function renderContractorJobsTable() {
     const tbody = document.getElementById("contractor-jobs-tbody");
     const emptyState = document.getElementById("empty-contractor-jobs-state");
@@ -1107,6 +1136,7 @@ async function main() {
           } else {
             detail = `📅 ${formatDateThai(j.siteVisitDate)} · ${j.repairDays ?? "-"} วัน`;
           }
+          detail += negotiationCellHtml(j);
         }
         const typeBadge = `<span class="cat-badge" style="background:${typeStyle.bg}; color:${typeStyle.text}; border:1px solid ${typeStyle.border}; font-weight:600;">${typeStyle.icon} ${jobTypeTri(j.type)}</span>${
           j.type === CONTRACTOR_JOB_TYPE.DEFECT && j.defectRound
@@ -1232,6 +1262,46 @@ async function main() {
         }
       });
     });
+    // ---- ระบบต่อรองราคา (Price Negotiation) ----
+    tbody.querySelectorAll(".cj-accept-offer-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.id;
+        const j = contractorJobs.find((x) => x.id === id);
+        if (!j) return;
+        const offers = (j.negotiation && j.negotiation.offers) || [];
+        const lastOffer = offers[offers.length - 1];
+        const priceText = lastOffer?.price != null ? `฿${Number(lastOffer.price).toLocaleString("th-TH")}` : "-";
+        if (!confirm(`Accept price ${priceText} for job "${j.jobId || id}"? / ยืนยันยอมรับราคา ${priceText} ของงาน "${j.jobId || id}"?`)) return;
+        try {
+          await acceptNegotiationOffer(id, j.type, j.negotiation, "admin", "");
+          showToast(T.msgCategorySaved);
+        } catch (e) {
+          console.error(e);
+          showToast(T.errorPrefix + e.message);
+        }
+      });
+    });
+    tbody.querySelectorAll(".cj-counter-offer-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.id;
+        const j = contractorJobs.find((x) => x.id === id);
+        if (!j) return;
+        const offers = (j.negotiation && j.negotiation.offers) || [];
+        const lastOffer = offers[offers.length - 1];
+        const price = prompt("New price (THB) / ราคาที่จะเสนอใหม่ (บาท):", lastOffer?.price ?? "");
+        if (price === null || price === "") return;
+        const daysInput = prompt("New number of days (optional, leave blank to keep unchanged) / จำนวนวันที่เสนอใหม่ (ถ้ามี ปล่อยว่างได้):", lastOffer?.days ?? "");
+        if (daysInput === null) return;
+        const note = prompt("Message to contractor (optional) / ข้อความถึงผู้รับเหมา (ถ้ามี):", "") || "";
+        try {
+          await submitNegotiationCounterOffer(id, j.type, j.negotiation, "admin", { price, days: daysInput, note });
+          showToast(T.msgCategorySaved);
+        } catch (e) {
+          console.error(e);
+          showToast(T.errorPrefix + e.message);
+        }
+      });
+    });
     tbody.querySelectorAll(".cj-pass-delivery-btn").forEach((btn) => {
       btn.addEventListener("click", async () => {
         const id = btn.dataset.id;
@@ -1239,11 +1309,12 @@ async function main() {
         if (!j) return;
         const approval = ensureApproval(j.approval);
         const stepDef = APPROVAL_STEP_DEFS.find((d) => d.step === approval.currentStep);
+        const note = prompt(`Comment (optional) / คอมเมนต์ (ถ้ามี):`, "") || "";
         if (!confirm(`Approve step ${approval.currentStep}/4 (${stepDef?.labelTh}) for job "${j.jobId || id}" as "${currentIdentity?.name}"? / ยืนยันอนุมัติขั้นตอนที่ ${approval.currentStep}/4 (${stepDef?.labelTh}) ของงาน "${j.jobId || id}" ในนาม "${currentIdentity?.name}"?`)) {
           return;
         }
         try {
-          await approveJobDeliveryStep(id, currentIdentity?.name, "");
+          await approveJobDeliveryStep(id, currentIdentity?.name, note);
           showToast(T.msgCategorySaved);
         } catch (e) {
           console.error(e);
@@ -1698,7 +1769,6 @@ async function main() {
     return true;
   }
 
-  let lastPeriodItems = [];
   function renderAll() {
     const projectScopedItems = allRequests.filter(withinProjectScope);
     const periodItems = projectScopedItems.filter((r) => withinPeriod(r.dateReported));
