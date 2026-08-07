@@ -1094,7 +1094,18 @@ async function main() {
   // ใช้ได้ทั้งงาน quote และ fix (ที่มีราคา) — defect ไม่มี negotiation object จึงคืนค่าว่างเสมอ
   function negotiationCellHtml(j) {
     const n = j.negotiation;
-    if (!n || !Array.isArray(n.offers) || !n.offers.length) return "";
+    if (!n || !Array.isArray(n.offers) || !n.offers.length) {
+      // งานเก่าที่เคยตอบรับ/เสนอราคาไปแล้ว "ก่อน" ที่ระบบต่อรองราคาจะเปิดใช้งาน — ยังไม่มี negotiation
+      // object เลย (เพราะฟิลด์นี้เพิ่งถูกสร้างตอนผู้รับเหมาส่งข้อเสนอครั้งใหม่เท่านั้น) ถ้าเป็นงาน
+      // quote/fix ที่มีราคาตั้งไว้แล้ว ให้แอดมินยังกด "เริ่มต่อรองราคาใหม่" ได้ (ไม่ต้องรอให้ผู้รับเหมา
+      // ส่งข้อเสนอใหม่ก่อน) — จะสร้าง negotiation ใหม่โดยใช้ราคาปัจจุบันเป็นข้อเสนอเริ่มต้นของผู้รับเหมา
+      const currentPrice = j.type === CONTRACTOR_JOB_TYPE.QUOTE ? j.quotePrice : j.repairPrice;
+      if (currentPrice == null) return "";
+      return `
+        <div style="margin-top:4px;">
+          <button class="btn btn-sm cj-start-negotiation-btn" data-id="${j.id}" style="background:#dbeafe; color:#1e40af; border:1px solid #93c5fd; padding:2px 6px; font-size:11px;">🤝 ต่อรองราคาใหม่ / Renegotiate price</button>
+        </div>`;
+    }
     const lastOffer = n.offers[n.offers.length - 1];
     const priceText = lastOffer.price != null ? `฿${Number(lastOffer.price).toLocaleString("th-TH")}` : "-";
     const daysText = lastOffer.days != null ? ` · ${lastOffer.days} วัน` : "";
@@ -1274,6 +1285,38 @@ async function main() {
         if (!confirm(`Accept price ${priceText} for job "${j.jobId || id}"? / ยืนยันยอมรับราคา ${priceText} ของงาน "${j.jobId || id}"?`)) return;
         try {
           await acceptNegotiationOffer(id, j.type, j.negotiation, "admin", "");
+          showToast(T.msgCategorySaved);
+        } catch (e) {
+          console.error(e);
+          showToast(T.errorPrefix + e.message);
+        }
+      });
+    });
+    tbody.querySelectorAll(".cj-start-negotiation-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.id;
+        const j = contractorJobs.find((x) => x.id === id);
+        if (!j) return;
+        const currentPrice = j.type === CONTRACTOR_JOB_TYPE.QUOTE ? j.quotePrice : j.repairPrice;
+        const currentDays = j.type === CONTRACTOR_JOB_TYPE.QUOTE ? j.quoteDays : j.repairDays;
+        const price = prompt("New price (THB) / ราคาที่จะเสนอใหม่ (บาท):", currentPrice ?? "");
+        if (price === null || price === "") return;
+        const daysInput = prompt("New number of days (optional, leave blank to keep unchanged) / จำนวนวันที่เสนอใหม่ (ถ้ามี ปล่อยว่างได้):", currentDays ?? "");
+        if (daysInput === null) return;
+        const note = prompt("Message to contractor (optional) / ข้อความถึงผู้รับเหมา (ถ้ามี):", "") || "";
+        // สร้างประวัติเริ่มต้น: ถือว่าราคาปัจจุบัน (ที่ผู้รับเหมาเคยเสนอไว้ตอนแรก) เป็นข้อเสนอที่ 1
+        // ก่อนที่แอดมินจะยื่นข้อเสนอโต้กลับนี้เป็นข้อเสนอที่ 2 — ให้ประวัติการต่อรองอ่านต่อเนื่องสมเหตุสมผล
+        const seedNegotiation = {
+          status: NEGOTIATION_STATUS.AWAITING_ADMIN,
+          offers: [{
+            by: "contractor", action: "offer",
+            price: currentPrice != null ? Number(currentPrice) : null,
+            days: currentDays != null ? Number(currentDays) : null,
+            note: "", at: new Date(),
+          }],
+        };
+        try {
+          await submitNegotiationCounterOffer(id, j.type, seedNegotiation, "admin", { price, days: daysInput, note });
           showToast(T.msgCategorySaved);
         } catch (e) {
           console.error(e);
