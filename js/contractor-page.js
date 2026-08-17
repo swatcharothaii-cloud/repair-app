@@ -2,7 +2,7 @@ import { COMPANY, CONTRACTOR_JOB_TYPE, CONTRACTOR_JOB_TYPE_STYLE, CONTRACTOR_JOB
 import { renderCompanyBrandBar, showToast, formatDateThai, todayStr } from "./utils.js";
 import { T, jobTypeTri, contractorJobStatusTri } from "./i18n.js";
 import {
-  watchContractorJob, respondFixJob, acceptQuoteJob, rejectJob, submitDelivery,
+  watchContractorJob, respondFixJob, acceptQuoteJob, rejectJob, submitDelivery, loadDeliveryPhotos,
   NEGOTIATION_STATUS, acceptNegotiationOffer, submitNegotiationCounterOffer,
 } from "./contractor-jobs.js";
 import { compressImageToDataUrl } from "./image-compress.js";
@@ -10,6 +10,24 @@ import { compressImageToDataUrl } from "./image-compress.js";
 const MAX_DELIVERY_IMAGES = 20; // ภาพส่งมอบงาน แนบได้มากกว่าภาพก่อนซ่อมทั่วไป (ซึ่งจำกัดที่ MAX_IMAGES/5 ภาพ)
 let deliveryImages = []; // [{url}] เก็บระหว่างกรอกฟอร์มส่งมอบงาน ก่อนกดส่ง
 let showCounterForm = false; // true เมื่อผู้รับเหมากด "เสนอราคาใหม่" กำลังกรอกฟอร์มข้อเสนอโต้กลับ
+
+// ภาพส่งมอบงานที่ส่งไปแล้ว เก็บแยกเป็น subcollection คนละใบต่อรูป (ดูเหตุผลใน contractor-jobs.js) จึง
+// ต้องโหลดแบบ async แยกจาก currentJob เดิม — cache ไว้กันโหลดซ้ำทุกครั้งที่ onSnapshot ยิง render() ใหม่
+let deliveryPhotosCache = { key: null, photos: [] };
+function deliveryPhotosCacheKey(job) {
+  return `${job.id}|${job.deliverySubmittedAt ? JSON.stringify(job.deliverySubmittedAt) : "pending"}`;
+}
+function ensureDeliveryPhotosLoaded(job) {
+  const key = deliveryPhotosCacheKey(job);
+  if (deliveryPhotosCache.key === key) return; // โหลดชุดนี้ไปแล้ว ไม่ต้องโหลดซ้ำ
+  deliveryPhotosCache = { key, photos: [] };
+  loadDeliveryPhotos(job.id, job.deliveryImages)
+    .then((photos) => {
+      deliveryPhotosCache = { key, photos };
+      if (currentJob && currentJob.id === job.id) render(); // re-render ให้เห็นรูปหลังโหลดเสร็จ
+    })
+    .catch((e) => console.error(e));
+}
 
 renderCompanyBrandBar("brand-bar", COMPANY);
 
@@ -81,7 +99,11 @@ function render() {
           </div>`;
 
     // หลังตกลงราคา/วันแล้ว ให้ผู้รับเหมาแจ้ง "ส่งมอบงาน" ได้ (ครั้งเดียว) แล้วรอทีมงานภายในตรวจรับ
-    const deliveryPhotosHtml = (job.deliveryImages || [])
+    // ภาพส่งมอบงานอยู่ใน subcollection แยกต่างหาก (ดู contractor-jobs.js) ต้องโหลดแบบ async — ระหว่างรอโหลด
+    // จะยังไม่มีรูปแสดง แล้ว re-render ให้เองอัตโนมัติทันทีที่โหลดเสร็จ (ดู ensureDeliveryPhotosLoaded)
+    if (job.deliverySubmitted) ensureDeliveryPhotosLoaded(job);
+    const currentDeliveryPhotos = deliveryPhotosCache.key === deliveryPhotosCacheKey(job) ? deliveryPhotosCache.photos : [];
+    const deliveryPhotosHtml = currentDeliveryPhotos
       .map((img, i) => `<img src="${img.url}" data-delivery-idx="${i}" title="${T.clickToViewPhoto || ""}">`)
       .join("");
     // ถ้าตรวจงานครั้งก่อนไม่ผ่าน (deliverySubmitted ถูกรีเซ็ตเป็น false แล้ว รอส่งใหม่) แสดงแบนเนอร์เตือนไว้ก่อนฟอร์ม
@@ -135,7 +157,9 @@ function render() {
   } else if (job.status === CONTRACTOR_JOB_STATUS.REJECTED) {
     actionHtml = `<div class="card" style="background:#fee2e2; border:1px solid #fca5a5; margin-top:16px;"><strong>❌ ${T.contractorRejectedMsg}</strong></div>`;
   } else if (job.status === CONTRACTOR_JOB_STATUS.DONE) {
-    const doneDeliveryPhotosHtml = (job.deliveryImages || [])
+    ensureDeliveryPhotosLoaded(job);
+    const doneCurrentDeliveryPhotos = deliveryPhotosCache.key === deliveryPhotosCacheKey(job) ? deliveryPhotosCache.photos : [];
+    const doneDeliveryPhotosHtml = doneCurrentDeliveryPhotos
       .map((img, i) => `<img src="${img.url}" data-delivery-idx="${i}" title="${T.clickToViewPhoto || ""}">`)
       .join("");
     actionHtml = `
@@ -178,9 +202,11 @@ function render() {
   });
 
   document.getElementById("job-action").innerHTML = actionHtml;
-  // ภาพส่งมอบงาน (deliveryImages) เป็นแกลเลอรีคนละชุดกับภาพก่อนซ่อม (job.images) ด้านบน — ผูก lightbox แยกกัน
+  // ภาพส่งมอบงาน เป็นแกลเลอรีคนละชุดกับภาพก่อนซ่อม (job.images) ด้านบน — ผูก lightbox แยกกัน (ดึงจาก
+  // cache ที่โหลดมาจาก subcollection ล่าสุด ณ ตอน render นี้ — ถ้ามีรูปแสดงอยู่ cache ต้องมีข้อมูลตรงกันแล้วเสมอ)
+  const deliveryPhotosForLightbox = deliveryPhotosCache.key === deliveryPhotosCacheKey(job) ? deliveryPhotosCache.photos : [];
   document.querySelectorAll("[data-delivery-idx]").forEach((img) => {
-    img.addEventListener("click", () => openLightbox(job.deliveryImages, Number(img.dataset.deliveryIdx)));
+    img.addEventListener("click", () => openLightbox(deliveryPhotosForLightbox, Number(img.dataset.deliveryIdx)));
   });
   wireActionHandlers(job);
   if (!job.deliverySubmitted) renderDeliveryImagePreviews();

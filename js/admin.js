@@ -88,7 +88,7 @@ async function main() {
   } = await import("./firebase-init.js");
   const { loadCategories, addCategory, updateCategory } = await import("./categories.js");
   const { loadProjects, addProject, updateProject } = await import("./projects.js");
-  const { mergeProjectsGroup } = await import("./project-merge.js");
+  const { mergeProjectsGroup, findExactDuplicateGroups, autoMergeExactDuplicateProjects } = await import("./project-merge.js");
   const { loadAdmins, addAdmin, updateAdmin } = await import("./admins.js");
 
   // รายชื่อแอดมิน — โหลดจาก Firestore (เพิ่ม/แก้ไข/ปิดใช้งานเองได้จากส่วน "จัดการรายชื่อแอดมิน" ด้านล่าง)
@@ -541,6 +541,51 @@ async function main() {
     }
   });
 
+  // ---------------- รวมโปรเจกต์ "ชื่อซ้ำเป๊ะ" ให้อัตโนมัติ (ไม่ต้องติ๊กเลือกเอง) ----------------
+  document.getElementById("proj-auto-merge-btn").addEventListener("click", async () => {
+    const resultEl = document.getElementById("proj-auto-merge-result");
+    const btn = document.getElementById("proj-auto-merge-btn");
+    const activeProjects = projects.filter((p) => p.active !== false);
+    const groups = findExactDuplicateGroups(activeProjects);
+    if (!groups.length) {
+      resultEl.textContent = "ไม่พบชื่อโปรเจกต์ที่ซ้ำกันเป๊ะ / No exact-duplicate project names found.";
+      return;
+    }
+    const preview = groups.map((g) => `"${g.map((p) => p.label).join('" = "')}"`).join("\n");
+    if (
+      !confirm(
+        `พบชื่อซ้ำ ${groups.length} กลุ่ม จะรวมดังนี้:\n${preview}\n\nข้อมูลเก่าทั้งหมดจะถูกย้ายมาที่โปรเจกต์เดียวต่อกลุ่มโดยอัตโนมัติ กู้คืนไม่ได้ ต้องการดำเนินการต่อหรือไม่?\n\nFound ${groups.length} duplicate group(s), will merge as shown above. All historical data will be moved automatically per group — this can't be undone. Proceed?`
+      )
+    ) {
+      return;
+    }
+    btn.disabled = true;
+    resultEl.textContent = "กำลังรวมข้อมูล... / Merging...";
+    try {
+      const results = await autoMergeExactDuplicateProjects(groups);
+      projects = await loadProjects();
+      refreshProjectSelects();
+      renderProjectManageList();
+      renderAll();
+      const summary = results
+        .map((r) => {
+          const counts = Object.entries(r.counts)
+            .map(([k, v]) => `${k}: ${v}`)
+            .join(", ");
+          return `✅ "${r.groupLabels.join('", "')}" → "${r.survivorLabel}" (${counts || "0"})`;
+        })
+        .join("\n");
+      resultEl.textContent = summary;
+      showToast(T.msgProjectSaved);
+    } catch (e) {
+      console.error(e);
+      resultEl.textContent = "";
+      showToast(T.errorPrefix + e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   // ---------------- จัดการรายชื่อแอดมิน (เพิ่ม/แก้ไขชื่อ/เปิด-ปิดใช้งานเอง ไม่ต้องแก้โค้ด+deploy) ----------------
   // ใช้ collection "admins" ร่วมกับระบบเบิกงวดงาน (progress-claim-app) — เพิ่ม/แก้ไขจากที่นี่มีผลกับ
   // อีกระบบทันที ปิดใช้งาน (ไม่ลบถาวร) เพื่อไม่ให้ประวัติ "แก้ไขล่าสุดโดย" ในรายการเก่าอ้างอิงชื่อที่หายไป
@@ -659,6 +704,7 @@ async function main() {
     NEGOTIATION_STATUS,
     acceptNegotiationOffer,
     submitNegotiationCounterOffer,
+    loadDeliveryPhotos,
   } = await import("./contractor-jobs.js");
   const { ensureApproval, renderApprovalStepper, APPROVAL_STATUS, APPROVAL_STEP_DEFS } = await import("./approval.js");
 
@@ -1273,7 +1319,9 @@ async function main() {
                 j.poFileData ? `<div class="hint" style="color:#1e40af;">${T.poFileLinkedBadge}</div>` : ""
               }`
             : `<button class="btn btn-outline btn-sm cj-set-po-btn" data-id="${j.id}">${T.btnSetPoNumber}</button>`;
-          const photoCountBadge = (j.deliveryImages || []).length ? ` 🖼️${j.deliveryImages.length}` : "";
+          // deliveryPhotoCount = ฟิลด์ใหม่ (นับจาก subcollection ตอนบันทึก) เอกสารเก่าก่อนแก้ไขจุดนี้ไม่มีฟิลด์นี้ จึง fallback ไปนับจาก deliveryImages เดิม
+          const cjPhotoCount = j.deliveryPhotoCount != null ? j.deliveryPhotoCount : (j.deliveryImages || []).length;
+          const photoCountBadge = cjPhotoCount ? ` 🖼️${cjPhotoCount}` : "";
           const roundBadge = j.inspectionRound ? `<div class="hint" style="margin-top:2px;">🔍 ${T.inspectionRoundLabel} ${j.inspectionRound}${j.lastInspectionResult === "failed" ? " ❌" : ""}</div>` : "";
           const jobApproval = ensureApproval(j.approval);
           const jobStepDef = APPROVAL_STEP_DEFS.find((d) => d.step === jobApproval.currentStep);
@@ -1476,7 +1524,12 @@ async function main() {
       });
     });
     tbody.querySelectorAll(".cj-print-btn").forEach((btn) => {
-      btn.addEventListener("click", () => printDeliveryNote(btn.dataset.id));
+      btn.addEventListener("click", () => {
+        printDeliveryNote(btn.dataset.id).catch((e) => {
+          console.error(e);
+          showToast(T.errorPrefix + e.message);
+        });
+      });
     });
   }
 
@@ -1493,9 +1546,11 @@ async function main() {
   }
 
   // พิมพ์ "ใบส่งมอบงาน" ของงานผู้รับเหมารายการเดียว (ใช้หน้าต่างสั่งพิมพ์ของเบราว์เซอร์ เหมือน Export PDF อื่นๆ ในระบบ)
-  function printDeliveryNote(id) {
+  // async เพราะภาพส่งมอบงานเก็บแยกเป็น subcollection (ดู contractor-jobs.js) ต้องโหลดมาก่อนค่อยพิมพ์
+  async function printDeliveryNote(id) {
     const j = contractorJobs.find((x) => x.id === id);
     if (!j) return;
+    const deliveryPhotos = j.deliverySubmitted ? await loadDeliveryPhotos(id, j.deliveryImages) : [];
     const typeStyle = CONTRACTOR_JOB_TYPE_STYLE[j.type] || CONTRACTOR_JOB_TYPE_STYLE[CONTRACTOR_JOB_TYPE.FIX];
     const statusStyle = CONTRACTOR_JOB_STATUS_STYLE[j.status] || CONTRACTOR_JOB_STATUS_STYLE[CONTRACTOR_JOB_STATUS.WAITING];
     const dash = `<span class="dn-empty-note">-</span>`;
@@ -1540,11 +1595,11 @@ async function main() {
         <td class="dn-value dn-full" colspan="3">${value}</td>
       </tr>`;
 
-    const photosSection = (j.deliveryImages || []).length
+    const photosSection = deliveryPhotos.length
       ? `<div class="dn-section-title">📷 ${T.contractorDeliveryPhotosLabel || "Delivery photos / ภาพส่งมอบงาน"}</div>
          <div class="dn-photos-wrap">
            <div class="dn-photos-grid">
-             ${(j.deliveryImages || []).map((img) => `<img class="print-thumb" src="${img.url}">`).join("")}
+             ${deliveryPhotos.map((img) => `<img class="print-thumb" src="${img.url}">`).join("")}
            </div>
          </div>`
       : "";

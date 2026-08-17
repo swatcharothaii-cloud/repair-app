@@ -5,6 +5,7 @@ import {
   addDoc,
   doc,
   getDoc,
+  getDocs,
   updateDoc,
   deleteDoc,
   onSnapshot,
@@ -89,7 +90,8 @@ export async function addContractorJob(data) {
     deliveryDate: "", // วันที่ผู้รับเหมาแจ้งว่าส่งมอบงานจริง
     deliveryNote: "",
     supervisorName: "", // ชื่อผู้ดูแลงาน (ฝั่งผู้รับเหมา) ที่รับผิดชอบตอนส่งมอบงานนี้
-    deliveryImages: [], // ภาพหน้างานตอนส่งมอบ (แนบได้สูงสุด 20 ภาพ แยกจากภาพก่อนซ่อมของงาน)
+    deliveryImages: [], // เลิกใช้เก็บรูปแล้ว (ย้ายไป subcollection "deliveryPhotos" — ดู submitDelivery) เหลือไว้กันโค้ดเก่าพัง
+    deliveryPhotoCount: 0, // ภาพหน้างานตอนส่งมอบ (แนบได้สูงสุด 20 ภาพ แยกจากภาพก่อนซ่อมของงาน) — จำนวนจริงอยู่ใน subcollection
     deliverySubmitted: false,
     deliverySubmittedAt: null,
     deliveryAccepted: false, // ทีมงานภายในกด "ตรวจรับงาน" แล้วหรือยัง
@@ -370,19 +372,49 @@ async function syncContractorJobPoToArchive(job) {
   }
 }
 
+// ภาพส่งมอบงาน (แนบได้สูงสุด 20 ภาพ) เก็บแยกเป็น subcollection ของงานแต่ละชิ้น แทนการเก็บเป็น array
+// ตรงในเอกสารงานเหมือนเดิม — เพราะเอกสาร Firestore 1 ชิ้นมีเพดานขนาด 1MB (ดูหมายเหตุใน firebase-init.js
+// เรื่องไม่ใช้ Firebase Storage) ถ้ามีทั้งภาพก่อนซ่อม (สูงสุด 5 ภาพ) + ไฟล์ PDF ใบสั่งซื้อที่แนบไว้ + ภาพส่งมอบงาน
+// อีกสูงสุด 20 ภาพ รวมกันอยู่ในเอกสารเดียวกัน มีโอกาสสูงมากที่จะเกิน 1MB แล้วบันทึกไม่ผ่าน (Firestore จะโยน
+// error "...longer than X bytes" กลับมา) จึงต้องแยกภาพส่งมอบงานออกไปเก็บเป็นเอกสารย่อยคนละใบต่อภาพแทน
+export const DELIVERY_PHOTOS_SUBCOLLECTION = "deliveryPhotos";
+
 // ผู้รับเหมาแจ้งส่งมอบงานจริง (ผ่านลิงก์สาธารณะ contractor.html เดิม ไม่ต้องล็อกอิน)
 // ทุกครั้งที่ส่งมอบงาน (ครั้งแรก หรือส่งใหม่หลังตรวจไม่ผ่าน) จะเริ่มกระบวนการอนุมัติ 4 ขั้นตอนใหม่เสมอ
+// และแทนที่ภาพส่งมอบงานชุดเดิมด้วยชุดใหม่ทั้งหมด (ลบของเก่าใน subcollection ก่อนค่อยเพิ่มของใหม่)
 export async function submitDelivery(id, { deliveryDate, deliveryNote, supervisorName, deliveryImages }) {
+  const photosCol = collection(db, CONTRACTOR_JOBS_COLLECTION, id, DELIVERY_PHOTOS_SUBCOLLECTION);
+  const oldSnap = await getDocs(photosCol);
+  for (const d of oldSnap.docs) {
+    await deleteDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id, DELIVERY_PHOTOS_SUBCOLLECTION, d.id));
+  }
+  const images = deliveryImages || [];
+  for (let i = 0; i < images.length; i++) {
+    await addDoc(photosCol, { url: images[i].url, order: i, uploadedAt: serverTimestamp() });
+  }
   await updateDoc(doc(db, CONTRACTOR_JOBS_COLLECTION, id), {
     deliveryDate,
     deliveryNote: (deliveryNote || "").trim(),
     supervisorName: (supervisorName || "").trim(),
-    deliveryImages: deliveryImages || [],
+    deliveryImages: [], // เลิกเก็บรูปในฟิลด์นี้แล้ว (ย้ายไป subcollection ด้านบน) เหลือไว้เป็น [] กันโค้ดเก่าที่ยังอ่าน field นี้พัง
+    deliveryPhotoCount: images.length, // ใช้โชว์ตัวเลขจำนวนภาพแบบเร็วๆ โดยไม่ต้องไปนับที่ subcollection
     deliverySubmitted: true,
     deliverySubmittedAt: serverTimestamp(),
     approval: createFreshApproval(),
     updatedAt: serverTimestamp(),
   });
+}
+
+// โหลดภาพส่งมอบงานทั้งหมดของงานนี้ — ดึงจาก subcollection ก่อนเป็นหลัก ถ้าไม่มี (เอกสารเก่าก่อนแก้ไขจุดนี้)
+// ค่อย fallback ไปใช้ field "deliveryImages" เดิมที่เก็บเป็น array ตรงในเอกสารงาน
+export async function loadDeliveryPhotos(jobId, legacyInlineImages) {
+  try {
+    const snap = await getDocs(query(collection(db, CONTRACTOR_JOBS_COLLECTION, jobId, DELIVERY_PHOTOS_SUBCOLLECTION), orderBy("order")));
+    if (!snap.empty) return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  } catch (e) {
+    console.error(e);
+  }
+  return legacyInlineImages || [];
 }
 
 // ---- ตรวจรับงานที่ผู้รับเหมาส่งมอบมา — ระบบอนุมัติ 4 ขั้นตอน (ทีมงาน/PM/จัดซื้อ/ผู้บริหาร) ----
