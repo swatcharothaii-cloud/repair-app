@@ -1,12 +1,12 @@
 import {
   DEPARTMENTS, STATUS, STATUS_STYLE, LIFF_ID_ADMIN, COMPANY, MAX_IMAGES, MAX_IMAGE_MB,
   CONTRACTOR_JOB_TYPE, CONTRACTOR_JOB_STATUS, CONTRACTOR_JOB_STATUS_STYLE, CONTRACTOR_JOB_TYPE_STYLE,
-  OTHER_APP_URL,
+  OTHER_APP_URL, URGENCY, URGENCY_ORDER, URGENCY_STYLE,
 } from "./config.js";
 import { showToast, formatDateThai, isOverdue, renderCompanyBrandBar } from "./utils.js";
 import { compressImageToDataUrl } from "./image-compress.js";
 import {
-  T, tri, catTri, statusTri, deptTri, idNumberLabel,
+  T, tri, catTri, statusTri, deptTri, urgencyTri, idNumberLabel,
   msgMaxImages, msgMaxAfterImages, msgFileTooLarge, msgExportSuccess,
   jobTypeTri, contractorJobStatusTri,
 } from "./i18n.js";
@@ -259,6 +259,21 @@ async function main() {
   document.getElementById("filter-category").value = "";
   fillSelect(document.getElementById("d-status"), Object.values(STATUS), false, statusTri);
   fillSelect(document.getElementById("d-forwardDept"), DEPARTMENTS, true, deptTri);
+  fillSelect(document.getElementById("d-urgency"), URGENCY_ORDER, false, urgencyTri);
+  fillSelect(document.getElementById("filter-urgency"), URGENCY_ORDER, false, urgencyTri);
+  document.getElementById("filter-urgency").insertAdjacentHTML("afterbegin", `<option value="">${T.filterAllUrgency}</option>`);
+  document.getElementById("filter-urgency").value = "";
+
+  // ตัวเลือก "ช่างผู้รับผิดชอบ" ในหน้าต่างแก้ไขรายการ — ใช้รายชื่อแอดมิน/ช่างชุดเดียวกับตัวเลือกชื่อผู้ใช้งาน
+  // (รวมที่ปิดใช้งานแล้วด้วย กันไม่ให้แก้ไขรายการเก่าที่เคยมอบหมายให้คนที่ปิดใช้งานไปแล้วไม่ได้)
+  function refreshTechSelect() {
+    const el = document.getElementById("d-assignedTech");
+    if (!el) return;
+    const prevValue = el.value;
+    fillSelect(el, admins.map((a) => a.name), true, (n) => n);
+    if (admins.some((a) => a.name === prevValue)) el.value = prevValue;
+  }
+  refreshTechSelect();
 
   // ตัวสลับโปรเจกต์ (ขอบเขตทั้งหน้า) + ดรอปดาวน์เลือกโปรเจกต์ในหน้าต่างแก้ไขรายการ — รวมทั้งที่เปิด
   // +ปิดใช้งานอยู่เหมือนกับประเภทงาน (กันไม่ให้ดู/แก้ไขรายการเก่าที่ใช้โปรเจกต์ที่ถูกปิดใช้งานไปแล้วไม่ได้)
@@ -614,6 +629,7 @@ async function main() {
     listEl.querySelectorAll("[data-admin-toggle]").forEach((btn) => {
       btn.addEventListener("click", () => toggleAdminRow(btn.dataset.adminToggle));
     });
+    if (typeof refreshTechSelect === "function") refreshTechSelect();
   }
 
   async function saveAdminRow(id) {
@@ -1138,10 +1154,91 @@ async function main() {
       selectedProjectScope && selectedProjectScope !== UNASSIGNED_PROJECT_KEY
         ? `Send this link to residents/tenants of <strong>${escapeHtmlGlobal(selectedProjectScope)}</strong> — the project is pre-selected for them / ส่งลิงก์นี้ให้ลูกบ้าน/ผู้เช่าโครงการ <strong>${escapeHtmlGlobal(selectedProjectScope)}</strong> — ระบบจะเลือกโปรเจกต์นี้ให้อัตโนมัติ / 将此链接发送给 <strong>${escapeHtmlGlobal(selectedProjectScope)}</strong> 项目的住户/租户，系统会自动为其选定项目`
         : `Send this link to residents/tenants — they can submit a repair request without logging in / ส่งลิงก์นี้ให้ลูกบ้าน/ผู้เช่า — แจ้งซ่อมได้เลยโดยไม่ต้องล็อกอิน (เลือกโปรเจกต์ "ทุกโปรเจกต์" อยู่ ระบบจะให้ลูกบ้านเลือกโปรเจกต์เอง) / 将此链接发送给住户/租户，无需登录即可提交报修`;
+    renderShareFormQr(link);
     document.getElementById("share-form-link-modal").style.display = "flex";
   });
   document.getElementById("close-share-form-link-modal").addEventListener("click", () => {
     document.getElementById("share-form-link-modal").style.display = "none";
+  });
+
+  // ---------- QR code สำหรับฟอร์มแจ้งซ่อม (ให้ลูกบ้าน/ผู้เช่าสแกนแล้วเปิดฟอร์มได้ทันที ไม่ต้องพิมพ์ลิงก์เอง) ----------
+  let currentQrCanvas = null;
+  let currentQrLink = "";
+  function renderShareFormQr(link) {
+    currentQrLink = link;
+    const box = document.getElementById("qr-code-box");
+    box.innerHTML = "";
+    if (typeof QRCode === "undefined") {
+      box.innerHTML = `<div class="hint" style="padding:20px;">QR code library failed to load — check your internet connection and reopen this window / โหลดไลบรารี QR code ไม่สำเร็จ กรุณาตรวจสอบอินเทอร์เน็ตแล้วเปิดหน้าต่างนี้ใหม่ / 二维码库加载失败，请检查网络后重新打开此窗口</div>`;
+      currentQrCanvas = null;
+      return;
+    }
+    const canvas = document.createElement("canvas");
+    box.appendChild(canvas);
+    QRCode.toCanvas(canvas, link, { width: 220, margin: 1, color: { dark: "#1f1147", light: "#ffffff" } }, (err) => {
+      if (err) {
+        console.error(err);
+        box.innerHTML = `<div class="hint" style="padding:20px;">Could not generate QR code / สร้าง QR code ไม่สำเร็จ / 生成二维码失败</div>`;
+        currentQrCanvas = null;
+        return;
+      }
+      currentQrCanvas = canvas;
+    });
+  }
+
+  document.getElementById("download-qr-btn").addEventListener("click", () => {
+    if (!currentQrCanvas) {
+      showToast("QR code not ready yet, please wait a moment / QR code ยังไม่พร้อม กรุณารอสักครู่ / 二维码尚未生成，请稍候");
+      return;
+    }
+    const a = document.createElement("a");
+    const scopeName = selectedProjectScope && selectedProjectScope !== UNASSIGNED_PROJECT_KEY ? selectedProjectScope : "all-projects";
+    a.download = `repair-form-qr-${scopeName}.png`.replace(/\s+/g, "-");
+    a.href = currentQrCanvas.toDataURL("image/png");
+    a.click();
+  });
+
+  document.getElementById("print-qr-btn").addEventListener("click", () => {
+    if (!currentQrCanvas) {
+      showToast("QR code not ready yet, please wait a moment / QR code ยังไม่พร้อม กรุณารอสักครู่ / 二维码尚未生成，请稍候");
+      return;
+    }
+    const scopeLabel = selectedProjectScope && selectedProjectScope !== UNASSIGNED_PROJECT_KEY ? escapeHtmlGlobal(selectedProjectScope) : "";
+    const qrDataUrl = currentQrCanvas.toDataURL("image/png");
+    const win = window.open("", "_blank", "width=500,height=700");
+    if (!win) {
+      showToast("Please allow pop-ups to print the QR sign / กรุณาอนุญาตให้เปิดหน้าต่างป๊อปอัปเพื่อพิมพ์ป้าย / 请允许弹出窗口以打印告示");
+      return;
+    }
+    win.document.write(`<!DOCTYPE html><html lang="th"><head><meta charset="UTF-8">
+<title>Scan to Report a Repair / สแกนเพื่อแจ้งซ่อม</title>
+<style>
+  @page { size: A4 portrait; margin: 0; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, "Segoe UI", "Sarabun", "Noto Sans Thai", Arial, sans-serif; display:flex; align-items:center; justify-content:center; min-height:100vh; background:#fff; }
+  .sheet { width:100%; max-width:560px; padding:48px 32px; text-align:center; }
+  .logo { max-height:64px; margin-bottom:18px; }
+  h1 { font-size:30px; margin:0 0 6px; color:#1f1147; }
+  h2 { font-size:20px; margin:0 0 4px; color:#3730a3; font-weight:600; }
+  h3 { font-size:17px; margin:0 0 28px; color:#6b7280; font-weight:500; }
+  .qr-wrap { display:inline-block; padding:20px; border:2px solid #e4e1f5; border-radius:20px; }
+  .qr-wrap img { width:280px; height:280px; display:block; }
+  .project { margin-top:22px; font-size:20px; font-weight:700; color:#4f46e5; }
+  .footer { margin-top:30px; font-size:13px; color:#9ca3af; }
+</style>
+</head><body>
+  <div class="sheet">
+    ${COMPANY?.logo ? `<img class="logo" src="${location.origin}${location.pathname.replace(/admin\.html$/, "")}${COMPANY.logo}">` : ""}
+    <h1>📷 Scan to Report a Repair</h1>
+    <h2>สแกนเพื่อแจ้งซ่อม</h2>
+    <h3>扫描二维码即可报修</h3>
+    <div class="qr-wrap"><img src="${qrDataUrl}"></div>
+    ${scopeLabel ? `<div class="project">${scopeLabel}</div>` : ""}
+    <div class="footer">${COMPANY?.nameTh || ""}</div>
+  </div>
+  <script>window.onload = () => { window.print(); };</script>
+</body></html>`);
+    win.document.close();
   });
   document.getElementById("copy-share-form-link-btn").addEventListener("click", async () => {
     const link = document.getElementById("share-form-link-display").textContent;
@@ -1696,7 +1793,7 @@ async function main() {
     });
   });
 
-  ["filter-status", "filter-category", "filter-search"].forEach((id) => {
+  ["filter-status", "filter-category", "filter-urgency", "filter-search"].forEach((id) => {
     document.getElementById(id).addEventListener("input", renderAll);
   });
 
@@ -1875,11 +1972,13 @@ async function main() {
       : selectedProjectScope;
     const statusFilterVal = document.getElementById("filter-status").value;
     const categoryFilterVal = document.getElementById("filter-category").value;
+    const urgencyFilterVal = document.getElementById("filter-urgency").value;
     const scopeParts = [
       periodLabelTri,
       escapeHtml(projectScopeLabel),
       statusFilterVal ? statusTri(statusFilterVal) : T.filterAllStatus,
       categoryFilterVal ? catTri(categoryFilterVal) : T.filterAllCategory,
+      urgencyFilterVal ? urgencyTri(urgencyFilterVal) : T.filterAllUrgency,
     ];
 
     const rowsHtml = items
@@ -1964,6 +2063,7 @@ async function main() {
     renderStats(periodItems);
     renderChart(periodItems);
     renderTable(periodItems);
+    renderKPI();
   }
 
   function renderStats(items) {
@@ -2018,14 +2118,182 @@ async function main() {
     }
   }
 
+  // ---------------- KPI DASHBOARD (MTTR / อัตราซ่อมเสร็จตรงเวลา / ค่าใช้จ่าย ฯลฯ) ----------------
+  // ขอบเขตข้อมูล: ใช้โปรเจกต์เดียวกับตัวสลับโปรเจกต์ด้านบน (selectedProjectScope) แต่มีช่วงวันที่ของตัวเอง
+  // แยกจากแท็บ รายวัน/รายสัปดาห์/รายเดือน/ทั้งหมด ด้านบน เพราะอยากดูย้อนหลังเป็นช่วงเวลาที่ยาวกว่านั้นได้
+  let kpiMttrCategoryChart = null;
+  let kpiMttrUrgencyChart = null;
+  let kpiCountUrgencyChart = null;
+  let kpiMonthlyChart = null;
+
+  function defaultKpiDateRange() {
+    const to = new Date();
+    const from = new Date();
+    from.setMonth(from.getMonth() - 5);
+    from.setDate(1);
+    const fmt = (d) => d.toISOString().slice(0, 10);
+    return { from: fmt(from), to: fmt(to) };
+  }
+  {
+    const kpiFromEl = document.getElementById("kpi-date-from");
+    const kpiToEl = document.getElementById("kpi-date-to");
+    if (kpiFromEl && kpiToEl) {
+      const { from, to } = defaultKpiDateRange();
+      kpiFromEl.value = from;
+      kpiToEl.value = to;
+    }
+  }
+
+  function kpiScopedItems() {
+    const from = document.getElementById("kpi-date-from").value;
+    const to = document.getElementById("kpi-date-to").value;
+    return allRequests.filter(withinProjectScope).filter((r) => {
+      if (!r.dateReported) return false;
+      if (from && r.dateReported < from) return false;
+      if (to && r.dateReported > to) return false;
+      return true;
+    });
+  }
+
+  // MTTR โดยประมาณ: ใช้ dateReported (เที่ยงคืนของวันที่แจ้ง เพราะระบบเก็บแค่วันที่ ไม่เก็บเวลาที่แจ้งจริง)
+  // ถึง resolvedAt (เวลาจริงตอนกดบันทึกสถานะเป็น "เสร็จแล้ว") — เป็นค่าประมาณ ไม่ใช่เวลาที่แม่นยำเป๊ะ
+  function mttrHours(r) {
+    const resolved = tsToDate(r.resolvedAt);
+    if (!resolved || !r.dateReported) return null;
+    const reported = new Date(`${r.dateReported}T00:00:00`);
+    const diffMs = resolved.getTime() - reported.getTime();
+    if (diffMs < 0 || isNaN(diffMs)) return null;
+    return diffMs / (1000 * 60 * 60);
+  }
+  function avgOf(list) {
+    return list.length ? list.reduce((a, b) => a + b, 0) / list.length : 0;
+  }
+
+  function renderKPI() {
+    const statGrid = document.getElementById("kpi-stat-grid");
+    if (!statGrid) return; // ยังไม่ทันโหลด DOM ส่วนนี้ (ไม่ควรเกิดขึ้น แต่กันไว้)
+
+    const items = kpiScopedItems();
+    const resolvedItems = items.filter((r) => r.resolvedAt);
+    const mttrList = resolvedItems.map(mttrHours).filter((h) => h !== null);
+    const avgMttr = mttrList.length ? avgOf(mttrList) : null;
+    const onTimeCount = resolvedItems.filter((r) => {
+      const resolved = tsToDate(r.resolvedAt);
+      if (!resolved || !r.dueDate) return false;
+      return resolved <= new Date(`${r.dueDate}T23:59:59`);
+    }).length;
+    const onTimeRate = resolvedItems.length ? (onTimeCount / resolvedItems.length) * 100 : null;
+    const totalCost = items.reduce((sum, r) => sum + (typeof r.repairCost === "number" ? r.repairCost : 0), 0);
+
+    const cards = [
+      { num: items.length, lbl: tri("Tickets in Period", "งานแจ้งซ่อมในช่วงนี้", "本期工单数"), color: "#4f46e5", icon: "📋" },
+      { num: resolvedItems.length, lbl: tri("Resolved", "ซ่อมเสร็จแล้ว", "已完成"), color: "#10b981", icon: "✅" },
+      { num: avgMttr !== null ? `${avgMttr.toFixed(1)} ${tri("hrs", "ชม.", "小时")}` : "-", lbl: tri("Avg. Repair Time (MTTR)", "MTTR เฉลี่ย", "平均维修时间"), color: "#0ea5e9", icon: "⏱️" },
+      { num: onTimeRate !== null ? `${onTimeRate.toFixed(1)}%` : "-", lbl: tri("On-time Completion", "ซ่อมเสร็จตรงเวลา", "按时完成率"), color: "#f59e0b", icon: "🎯" },
+      { num: `฿${totalCost.toLocaleString("th-TH", { maximumFractionDigits: 0 })}`, lbl: tri("Repair Cost", "ค่าใช้จ่ายในการซ่อม", "维修费用"), color: "#c026d3", icon: "💰" },
+    ];
+    statGrid.innerHTML = cards
+      .map(
+        (c) => `
+      <div class="stat-card" style="--stat-color:${c.color};">
+        <div class="stat-icon">${c.icon}</div>
+        <div class="stat-body">
+          <div class="num" style="color:${c.color};">${c.num}</div>
+          <div class="lbl">${c.lbl}</div>
+        </div>
+      </div>`
+      )
+      .join("");
+
+    if (typeof Chart === "undefined") return;
+    try {
+      // MTTR ตามประเภทงาน
+      const catList = categoriesForStats(items);
+      const mttrByCat = catList.map((c) => avgOf(resolvedItems.filter((r) => r.category === c.label).map(mttrHours).filter((h) => h !== null)));
+      const ctx1 = document.getElementById("kpi-mttr-category-chart");
+      if (kpiMttrCategoryChart) kpiMttrCategoryChart.destroy();
+      kpiMttrCategoryChart = new Chart(ctx1, {
+        type: "bar",
+        data: {
+          labels: catList.map((c) => `${c.icon} ${catTri(c.label)}`),
+          datasets: [{ data: mttrByCat.map((h) => Number(h.toFixed(1))), backgroundColor: catList.map((c) => c.color), borderRadius: 8 }],
+        },
+        options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } },
+      });
+
+      // MTTR ตามความเร่งด่วน
+      const mttrByUrgency = URGENCY_ORDER.map((u) => avgOf(resolvedItems.filter((r) => (r.urgency || URGENCY.NORMAL) === u).map(mttrHours).filter((h) => h !== null)));
+      const ctx2 = document.getElementById("kpi-mttr-urgency-chart");
+      if (kpiMttrUrgencyChart) kpiMttrUrgencyChart.destroy();
+      kpiMttrUrgencyChart = new Chart(ctx2, {
+        type: "bar",
+        data: {
+          labels: URGENCY_ORDER.map((u) => urgencyTri(u)),
+          datasets: [{ data: mttrByUrgency.map((h) => Number(h.toFixed(1))), backgroundColor: URGENCY_ORDER.map((u) => URGENCY_STYLE[u].dot), borderRadius: 8 }],
+        },
+        options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } },
+      });
+
+      // จำนวนงานตามความเร่งด่วน
+      const countByUrgency = URGENCY_ORDER.map((u) => items.filter((r) => (r.urgency || URGENCY.NORMAL) === u).length);
+      const ctx3 = document.getElementById("kpi-count-urgency-chart");
+      if (kpiCountUrgencyChart) kpiCountUrgencyChart.destroy();
+      kpiCountUrgencyChart = new Chart(ctx3, {
+        type: "bar",
+        data: {
+          labels: URGENCY_ORDER.map((u) => urgencyTri(u)),
+          datasets: [{ data: countByUrgency, backgroundColor: URGENCY_ORDER.map((u) => URGENCY_STYLE[u].dot), borderRadius: 8 }],
+        },
+        options: { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } } } },
+      });
+
+      // ปริมาณงาน + ค่าใช้จ่ายรายเดือน
+      const monthMap = new Map();
+      items.forEach((r) => {
+        const month = (r.dateReported || "").slice(0, 7);
+        if (!month) return;
+        if (!monthMap.has(month)) monthMap.set(month, { count: 0, cost: 0 });
+        const entry = monthMap.get(month);
+        entry.count += 1;
+        entry.cost += typeof r.repairCost === "number" ? r.repairCost : 0;
+      });
+      const months = [...monthMap.keys()].sort();
+      const ctx4 = document.getElementById("kpi-monthly-chart");
+      if (kpiMonthlyChart) kpiMonthlyChart.destroy();
+      kpiMonthlyChart = new Chart(ctx4, {
+        type: "bar",
+        data: {
+          labels: months,
+          datasets: [
+            { type: "bar", label: tri("Tickets", "จำนวนงาน", "工单数"), data: months.map((m) => monthMap.get(m).count), backgroundColor: "#4f46e5", borderRadius: 6, yAxisID: "y" },
+            { type: "line", label: tri("Cost (THB)", "ค่าใช้จ่าย (บาท)", "费用（泰铢）"), data: months.map((m) => monthMap.get(m).cost), borderColor: "#c026d3", backgroundColor: "#c026d3", yAxisID: "y1", tension: 0.3 },
+          ],
+        },
+        options: {
+          scales: {
+            y: { beginAtZero: true, position: "left", ticks: { precision: 0 } },
+            y1: { beginAtZero: true, position: "right", grid: { drawOnChartArea: false } },
+          },
+        },
+      });
+    } catch (e) {
+      console.warn("KPI chart render skipped:", e);
+    }
+  }
+
+  const kpiRefreshBtn = document.getElementById("kpi-refresh-btn");
+  if (kpiRefreshBtn) kpiRefreshBtn.addEventListener("click", renderKPI);
+
   function applyTableFilters(items) {
     const status = document.getElementById("filter-status").value;
     const category = document.getElementById("filter-category").value;
+    const urgency = document.getElementById("filter-urgency").value;
     const search = document.getElementById("filter-search").value.trim().toLowerCase();
 
     let filtered = items;
     if (status) filtered = filtered.filter((r) => r.status === status);
     if (category) filtered = filtered.filter((r) => r.category === category);
+    if (urgency) filtered = filtered.filter((r) => (r.urgency || URGENCY.NORMAL) === urgency);
     if (search) {
       filtered = filtered.filter((r) =>
         [r.siteName, r.reporterName, r.ticketId].filter(Boolean).some((v) => v.toLowerCase().includes(search))
@@ -2056,6 +2324,8 @@ async function main() {
         const thumbCell = thumbUrl
           ? `<img class="table-thumb" src="${thumbUrl}" data-id="${r.id}" title="${T.clickToViewPhoto}">`
           : `<div class="table-thumb-placeholder" title="${T.noImagesAttached}">🗂️</div>`;
+        const urgencyVal = r.urgency || URGENCY.NORMAL;
+        const urgencyStyle = URGENCY_STYLE[urgencyVal] || URGENCY_STYLE[URGENCY.NORMAL];
         return `
           <tr data-id="${r.id}">
             <td>${thumbCell}</td>
@@ -2063,6 +2333,7 @@ async function main() {
             <td>${escapeHtml(r.project || T.unassignedProjectLabel)}</td>
             <td>${escapeHtml(r.siteName || "-")}</td>
             <td>${r.category ? `<span class="cat-badge" style="background:${catColor}22; color:${catColor};"><span class="dot" style="background:${catColor};"></span>${catIcon}${escapeHtml(catTri(r.category))}</span>` : "-"}</td>
+            <td><span class="badge" style="background:${urgencyStyle.bg}; color:${urgencyStyle.text};"><span class="dot" style="background:${urgencyStyle.dot};"></span>${urgencyTri(urgencyVal)}</span></td>
             <td>${escapeHtml(r.reporterName || "-")}</td>
             <td>${formatDateThai(r.dateReported)}</td>
             <td class="${overdue ? "overdue" : ""}">${formatDateThai(r.dueDate)}</td>
@@ -2088,6 +2359,19 @@ async function main() {
     const d = document.createElement("div");
     d.textContent = str ?? "";
     return d.innerHTML;
+  }
+
+  // ---------------- Helpers สำหรับฟิลด์ resolvedAt (Firestore Timestamp) — ใช้คำนวณ MTTR และแสดงผล ----------------
+  function tsToDate(ts) {
+    if (!ts) return null;
+    if (typeof ts.toDate === "function") return ts.toDate();
+    const d = new Date(ts);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  function formatTimestampThai(ts) {
+    const d = tsToDate(ts);
+    if (!d) return null;
+    return `${d.toLocaleDateString("th-TH", { year: "numeric", month: "short", day: "numeric" })} ${d.toLocaleTimeString("th-TH", { hour: "2-digit", minute: "2-digit" })}`;
   }
 
   // ---------------- DETAIL MODAL ----------------
@@ -2161,6 +2445,13 @@ async function main() {
     document.getElementById("d-status").value = r.status || STATUS.PENDING;
     document.getElementById("d-forward-field").style.display = r.status === STATUS.FORWARDED ? "block" : "none";
     document.getElementById("d-forwardDept").value = r.forwardDept || "";
+    document.getElementById("d-urgency").value = r.urgency || URGENCY.NORMAL;
+    document.getElementById("d-assignedTech").value = r.assignedTech || "";
+    document.getElementById("d-repairCost").value = r.repairCost ?? "";
+    const resolvedText = formatTimestampThai(r.resolvedAt);
+    document.getElementById("d-resolved-hint").textContent = resolvedText
+      ? tri(`Resolved at: ${resolvedText}`, `ซ่อมเสร็จเมื่อ: ${resolvedText}`, `完成时间：${resolvedText}`)
+      : "";
 
     const locText = document.getElementById("d-location-text");
     const mapLink = document.getElementById("d-map-link");
@@ -2293,6 +2584,9 @@ async function main() {
     btn.textContent = T.msgSaving;
 
     try {
+      const newStatus = document.getElementById("d-status").value;
+      const repairCostRaw = document.getElementById("d-repairCost").value.trim();
+
       // รูปภาพเก็บเป็น base64 ตรงใน Firestore (ไม่ใช้ Storage) ลบออกจาก array ก็เพียงพอแล้ว
       const updated = {
         siteName: document.getElementById("d-siteName").value.trim(),
@@ -2303,13 +2597,25 @@ async function main() {
         description: document.getElementById("d-description").value.trim(),
         dateReported: document.getElementById("d-dateReported").value,
         dueDate: document.getElementById("d-dueDate").value,
-        status: document.getElementById("d-status").value,
-        forwardDept: document.getElementById("d-status").value === STATUS.FORWARDED ? document.getElementById("d-forwardDept").value : "",
+        status: newStatus,
+        forwardDept: newStatus === STATUS.FORWARDED ? document.getElementById("d-forwardDept").value : "",
+        urgency: document.getElementById("d-urgency").value || URGENCY.NORMAL,
+        assignedTech: document.getElementById("d-assignedTech").value || "",
+        repairCost: repairCostRaw === "" || isNaN(Number(repairCostRaw)) ? null : Number(repairCostRaw),
         images: activeBeforeImages,
         afterImages: activeAfterImages,
         updatedAt: serverTimestamp(),
         updatedBy: currentIdentity ? `${currentIdentity.id} - ${currentIdentity.name}` : tri("Admin", "แอดมิน", "管理员"),
       };
+
+      // จับเวลา "ซ่อมเสร็จจริง" (resolvedAt) เฉพาะตอนเปลี่ยนสถานะเข้า/ออกจาก "เสร็จแล้ว" เท่านั้น — ใช้คำนวณ
+      // MTTR ในแดชบอร์ด KPI ถ้าสถานะเดิมก็เป็น "เสร็จแล้ว" อยู่แล้ว (แก้ไขข้อมูลอื่นโดยไม่เปลี่ยนสถานะ) จะไม่
+      // แตะ resolvedAt เดิม กันไม่ให้ MTTR เพี้ยนจากการแก้ไขข้อมูลทั่วไปภายหลัง
+      if (newStatus === STATUS.DONE && r.status !== STATUS.DONE) {
+        updated.resolvedAt = serverTimestamp();
+      } else if (newStatus !== STATUS.DONE && r.status === STATUS.DONE) {
+        updated.resolvedAt = null; // เปิดงานใหม่อีกครั้ง (reopen) — เคลียร์เวลาที่เคยปิดไว้
+      }
 
       await updateDoc(doc(db, "repairRequests", activeDetailId), updated);
       showToast(T.msgSaveSuccess);
