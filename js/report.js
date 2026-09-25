@@ -1,8 +1,8 @@
-import { CATEGORIES_SEED, STATUS, MAX_IMAGES, MAX_IMAGE_MB } from "./config.js";
+import { CATEGORIES_SEED, STATUS, MAX_IMAGES, MAX_IMAGE_MB, URGENCY, URGENCY_ORDER } from "./config.js";
 import { showToast, todayStr, saveMyTicket, generateTicketId } from "./utils.js";
 import { MapPicker } from "./map-picker.js";
 import { compressImageToDataUrl } from "./image-compress.js";
-import { T, catTri, msgMaxImages, msgFileTooLarge } from "./i18n.js";
+import { T, catTri, urgencyTri, msgMaxImages, msgFileTooLarge } from "./i18n.js";
 
 // โหลด firebase-init.js แบบ dynamic import ตอนใช้งานจริงเท่านั้น (ไม่ใช่ตอนโหลดหน้าเว็บ)
 // เพื่อไม่ให้ทั้งฟอร์ม (เลือกประเภทงาน/แนบรูป/เลือกตำแหน่ง) ใช้งานไม่ได้ หากเชื่อมต่อ Firebase CDN ไม่สำเร็จชั่วคราว
@@ -99,6 +99,11 @@ function escapeHtml(str) {
   d.textContent = str ?? "";
   return d.innerHTML;
 }
+
+// ---------- Urgency select (ความเร่งด่วน) — ค่าเริ่มต้น "ปกติ" ผู้แจ้งเปลี่ยนเองได้ถ้าเป็นเรื่องด่วนกว่านั้น ----------
+const urgencySelect = document.getElementById("urgencySelect");
+urgencySelect.innerHTML = URGENCY_ORDER.map((u) => `<option value="${u}">${urgencyTri(u)}</option>`).join("");
+urgencySelect.value = URGENCY.NORMAL;
 
 // ---------- Default dates ----------
 document.getElementById("dateReported").value = todayStr();
@@ -254,6 +259,10 @@ form.addEventListener("submit", async (e) => {
       images: imageUrls,
       status: STATUS.PENDING,
       forwardDept: "",
+      urgency: urgencySelect.value || URGENCY.NORMAL,
+      resolvedAt: null,
+      repairCost: null,
+      assignedTech: "",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
       updatedBy: "",
@@ -270,6 +279,7 @@ form.addEventListener("submit", async (e) => {
     document.getElementById("success-modal").style.display = "flex";
     showLiffCloseButtonIfNeeded();
     form.reset();
+    urgencySelect.value = URGENCY.NORMAL; // form.reset() คืนค่าตัวเลือกแรกใน URGENCY_ORDER (Shutdown) ไม่ใช่ "ปกติ" ต้องตั้งใหม่ให้ชัดเจน
     selectedImages = [];
     renderPreviews();
     document.querySelectorAll(".chip").forEach((c) => c.classList.remove("selected"));
