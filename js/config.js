@@ -104,6 +104,26 @@ export const MAX_IMAGES = 5;
 export const MAX_IMAGE_MB = 8; // ขนาดไฟล์ต้นฉบับสูงสุดที่ยอมรับก่อนบีบอัด
 
 // ============================================================
+//  ความเร่งด่วน (Urgency) — ใช้กับแดชบอร์ด KPI (MTTR แยกตามความเร่งด่วน ฯลฯ)
+//  เรียงจากเร่งด่วนที่สุด → น้อยที่สุด ค่า "ปกติ" คือค่าเริ่มต้นของรายการแจ้งซ่อมเก่าที่ยังไม่เคยมีฟิลด์นี้
+// ============================================================
+export const URGENCY = {
+  SHUTDOWN: "หยุดทำงานทั้งระบบ",
+  EMERGENCY: "ฉุกเฉิน",
+  URGENT: "เร่งด่วน",
+  NORMAL: "ปกติ",
+};
+
+export const URGENCY_ORDER = [URGENCY.SHUTDOWN, URGENCY.EMERGENCY, URGENCY.URGENT, URGENCY.NORMAL];
+
+export const URGENCY_STYLE = {
+  [URGENCY.SHUTDOWN]: { bg: "#fee2e2", text: "#991b1b", dot: "#dc2626" },
+  [URGENCY.EMERGENCY]: { bg: "#ffedd5", text: "#9a3412", dot: "#f97316" },
+  [URGENCY.URGENT]: { bg: "#fef3c7", text: "#92400e", dot: "#f59e0b" },
+  [URGENCY.NORMAL]: { bg: "#e0e7ff", text: "#3730a3", dot: "#6366f1" },
+};
+
+// ============================================================
 //  ระบบส่งงานให้ผู้รับเหมา (Contractor Jobs) — เฟส 1
 // ============================================================
 export const CONTRACTOR_JOB_TYPE = {
