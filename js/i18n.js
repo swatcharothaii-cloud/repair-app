@@ -36,6 +36,14 @@ export const STATUS_TRI = {
   "ส่งต่อให้แผนกอื่นทำต่อ": tri("Forwarded to Another Dept.", "ส่งต่อให้แผนกอื่นทำต่อ", "转交其他部门处理"),
 };
 
+// ---------- ความเร่งด่วน (key = URGENCY.* เดิมใน config.js) ----------
+export const URGENCY_TRI = {
+  "หยุดทำงานทั้งระบบ": tri("Shutdown", "หยุดทำงานทั้งระบบ", "停机"),
+  "ฉุกเฉิน": tri("Emergency", "ฉุกเฉิน", "紧急"),
+  "เร่งด่วน": tri("Urgent", "เร่งด่วน", "紧急处理"),
+  "ปกติ": tri("Normal", "ปกติ", "正常"),
+};
+
 // ---------- แผนกที่ส่งต่อ (key = DEPARTMENTS[] เดิม) ----------
 export const DEPARTMENT_TRI = {
   "ทีมประปา": tri("Plumbing Team", "ทีมประปา", "水管队"),
@@ -60,6 +68,7 @@ export const CONTRACTOR_JOB_STATUS_TRI = {
 export function catTri(label) { return CATEGORY_TRI[label] || label; }
 export function statusTri(label) { return STATUS_TRI[label] || label; }
 export function deptTri(label) { return DEPARTMENT_TRI[label] || label; }
+export function urgencyTri(label) { return URGENCY_TRI[label] || label; }
 export function contractorJobStatusTri(label) { return CONTRACTOR_JOB_STATUS_TRI[label] || label; }
 export function jobTypeTri(type) {
   if (type === "quote") return tri("New work (quote needed)", "งานใหม่ที่ต้องเสนอราคา", "新工程（需报价）");
@@ -154,6 +163,7 @@ export const T = {
   chartTitle: tri("Summary by Category", "สรุปตามประเภทงาน", "按类别统计"),
   filterAllStatus: tri("All Statuses", "สถานะทั้งหมด", "全部状态"),
   filterAllCategory: tri("All Categories", "ประเภทงานทั้งหมด", "全部类别"),
+  filterAllUrgency: tri("All Urgency", "ความเร่งด่วนทั้งหมด", "全部紧急程度"),
   filterAllProjects: tri("All Projects", "ทุกโปรเจกต์", "全部项目"),
   unassignedProjectLabel: tri("(No project specified)", "(ไม่ระบุโปรเจกต์)", "（未指定项目）"),
   thProject: tri("Project", "โปรเจกต์", "项目"),
