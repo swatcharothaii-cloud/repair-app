@@ -757,6 +757,12 @@ tbody tr:hover { background: var(--primary-light); }
 
 .chart-card { background:#fff; border-radius:16px; padding:18px; box-shadow: var(--shadow); border: 1px solid var(--border); margin-bottom: var(--section-gap); }
 
+/* กริดกราฟ 2 คอลัมน์ในแดชบอร์ด KPI — ยุบเหลือคอลัมน์เดียวบนจอมือถือ/แท็บเล็ตแคบ */
+.kpi-chart-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px; }
+@media (max-width: 900px) {
+  .kpi-chart-grid { grid-template-columns:1fr; }
+}
+
 /* หัวข้อ section แบบ <details><summary> ทุกจุดในหน้าแอดมิน — แถบหัวเรื่องที่กดเปิด/ปิดได้ อ่านง่ายกว่าตัวหนังสือธรรมดา */
 details.chart-card summary,
 #category-manager summary,
