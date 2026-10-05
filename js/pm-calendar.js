@@ -25,8 +25,19 @@ export const PM_FREQUENCY_ORDER = [
   PM_FREQUENCY.ONCE,
 ];
 
-function todayISOStr() {
-  return new Date().toISOString().slice(0, 10);
+// แปลง Date เป็นสตริง YYYY-MM-DD โดยใช้ "วันที่ตามเวลาท้องถิ่นของเครื่อง" เสมอ — ห้ามใช้ d.toISOString().slice(0,10)
+// ตรงนี้เด็ดขาด เพราะ toISOString() จะแปลงเป็นเวลา UTC ก่อน ซึ่งสำหรับประเทศไทย (UTC+7) เวลาเที่ยงคืนตามเวลา
+// ท้องถิ่นของวันที่ X จะกลายเป็นบ่าย 5 โมงเย็นของวันที่ (X-1) ใน UTC ทำให้ได้วันที่ย้อนหลังไป 1 วันแบบเพี้ยน
+// ทุกครั้ง (ไม่ใช่แค่บางกรณี) — บั๊กนี้ถูกตรวจพบจากการทดสอบใช้งานจริงบนเบราว์เซอร์ของผู้ใช้ในไทย
+function toLocalISODate(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+export function todayISOStr() {
+  return toLocalISODate(new Date());
 }
 
 // เลื่อนวันที่ไปข้างหน้า "หนึ่งรอบ" ตามความถี่ที่กำหนด — คืนค่า null ถ้าเป็น "ครั้งเดียว" (ไม่มีรอบถัดไป)
@@ -51,7 +62,7 @@ function advanceOnce(dateStr, frequency) {
     default:
       return null;
   }
-  return d.toISOString().slice(0, 10);
+  return toLocalISODate(d);
 }
 
 // คำนวณวันครบกำหนดครั้งถัดไปจากวันครบกำหนดปัจจุบัน — ถ้างานค้างเกินกำหนดมานาน (เช่น ลืมกดทำเสร็จหลายรอบ)
