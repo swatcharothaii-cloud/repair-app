@@ -11,7 +11,7 @@ import {
   jobTypeTri, contractorJobStatusTri,
 } from "./i18n.js";
 import {
-  PM_FREQUENCY, PM_FREQUENCY_ORDER, computeNextDueDate,
+  PM_FREQUENCY, PM_FREQUENCY_ORDER, computeNextDueDate, todayISOStr,
   loadPmSchedules, loadPmLogs, addPmSchedule, updatePmSchedule, deletePmSchedule, completePmSchedule,
 } from "./pm-calendar.js";
 
@@ -2352,7 +2352,7 @@ async function main() {
 
     const firstWeekday = new Date(year, month, 1).getDay();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = todayISOStr();
 
     let html = "";
     for (let i = 0; i < firstWeekday; i++) html += `<div class="pm-cal-cell pm-cal-empty"></div>`;
@@ -2390,7 +2390,7 @@ async function main() {
       return;
     }
     emptyState.innerHTML = "";
-    const todayStr = new Date().toISOString().slice(0, 10);
+    const todayStr = todayISOStr();
     tbody.innerHTML = scoped
       .map((s) => {
         const isPast = s.nextDueDate && s.nextDueDate < todayStr;
@@ -2589,7 +2589,7 @@ async function main() {
         scheduleTitle: s.title,
         project: s.project || "",
         dueDateAtCompletion: s.nextDueDate,
-        completedDate: new Date().toISOString().slice(0, 10),
+        completedDate: todayISOStr(),
         completedBy,
         notes,
       });
