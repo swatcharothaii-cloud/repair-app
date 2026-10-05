@@ -61,3 +61,8 @@ export const CONTRACTOR_JOBS_COLLECTION = "contractorJobs";
 // (ดู contractor-jobs.js ฟังก์ชัน setPoNumberWithFile / syncContractorJobPoToArchive) เพื่อให้ PO
 // ที่ออกจากระบบนี้ไปโผล่ใน "📜 Purchase Order Archive (PEAK Import)" ของ progress-claim-app ด้วย
 export const LEGACY_PO_COLLECTION = "legacyPurchaseOrders";
+// ปฏิทินซ่อมบำรุงเชิงป้องกัน (PM Calendar) — pmSchedules เก็บรายการงานที่ต้องทำซ้ำตามรอบ (รายวัน/รายสัปดาห์/ฯลฯ)
+// pmLogs เก็บประวัติทุกครั้งที่กด "ทำเสร็จแล้ว" แยกเป็นคนละเอกสาร ไม่รวมไว้ในรายการเดียวกับตารางบน เพื่อไม่ให้
+// เอกสารบวมเกิน 1MB ถ้ามีประวัติสะสมเยอะ (ดู js/pm-calendar.js)
+export const PM_SCHEDULES_COLLECTION = "pmSchedules";
+export const PM_LOGS_COLLECTION = "pmLogs";
