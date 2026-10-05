@@ -99,6 +99,67 @@
     </div>
   </details>
 
+  <details class="chart-card" id="pm-calendar-section" open>
+    <summary style="cursor:pointer; font-weight:600; font-size:15px;">🗓️ PM Calendar / ปฏิทินซ่อมบำรุงเชิงป้องกัน / 预防性维护日历</summary>
+    <div style="margin-top:16px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <button type="button" class="btn btn-outline btn-sm" id="pm-cal-prev-btn">◀</button>
+          <div id="pm-cal-month-label" style="font-weight:600; min-width:160px; text-align:center;"></div>
+          <button type="button" class="btn btn-outline btn-sm" id="pm-cal-next-btn">▶</button>
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" id="add-pm-schedule-btn">+ Add PM Schedule / เพิ่มรายการ PM / 添加PM计划</button>
+      </div>
+
+      <div class="pm-cal-weekdays">
+        <div>Sun</div><div>Mon</div><div>Tue</div><div>Wed</div><div>Thu</div><div>Fri</div><div>Sat</div>
+      </div>
+      <div class="pm-cal-grid" id="pm-cal-grid"></div>
+      <div class="pm-cal-legend">
+        <span><i class="pm-cal-dot overdue"></i> Overdue / เกินกำหนด / 已逾期</span>
+        <span><i class="pm-cal-dot today"></i> Due Today / ครบกำหนดวันนี้ / 今日到期</span>
+        <span><i class="pm-cal-dot upcoming"></i> Upcoming / กำหนดในอนาคต / 未来计划</span>
+        <span><i class="pm-cal-dot done"></i> Completed / ทำเสร็จแล้ว / 已完成</span>
+      </div>
+
+      <h4 style="margin:20px 0 10px;">📋 PM Schedules / รายการ PM ทั้งหมด / PM计划列表</h4>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Title / ชื่องาน / 任务名称</th>
+              <th>Project / โปรเจกต์ / 项目</th>
+              <th>Frequency / ความถี่ / 频率</th>
+              <th>Next Due / ครบกำหนดถัดไป / 下次到期</th>
+              <th>Assigned Tech / ผู้รับผิดชอบ / 负责人</th>
+              <th style="width:220px;">Actions / จัดการ / 操作</th>
+            </tr>
+          </thead>
+          <tbody id="pm-schedule-tbody"></tbody>
+        </table>
+      </div>
+      <div id="empty-pm-schedule-state"></div>
+
+      <h4 style="margin:20px 0 10px;">📜 Completion History / ประวัติการทำเสร็จ / 完成历史</h4>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Title / ชื่องาน / 任务名称</th>
+              <th>Project / โปรเจกต์ / 项目</th>
+              <th>Due Date / ครบกำหนด / 到期日</th>
+              <th>Completed Date / วันที่ทำเสร็จ / 完成日期</th>
+              <th>Completed By / ผู้ทำ / 完成人</th>
+              <th>Notes / หมายเหตุ / 备注</th>
+            </tr>
+          </thead>
+          <tbody id="pm-history-tbody"></tbody>
+        </table>
+      </div>
+      <div id="empty-pm-history-state"></div>
+    </div>
+  </details>
+
   <details class="chart-card" id="project-manager">
     <summary style="cursor:pointer; font-weight:600; font-size:15px;">📁 Manage Projects / จัดการโปรเจกต์ / 管理项目</summary>
     <div style="margin-top:16px;">
@@ -514,6 +575,71 @@
     <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
       <button class="btn btn-outline" id="cancel-cj-set-po-btn">Cancel / ยกเลิก / 取消</button>
       <button class="btn btn-primary" id="save-cj-set-po-btn">Save / บันทึก / 保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ADD / EDIT PM SCHEDULE MODAL ============ -->
+<div class="modal-overlay" id="pm-schedule-modal" style="display:none;">
+  <div class="modal-sheet" style="max-width:520px;">
+    <div class="modal-header">
+      <h3 id="pm-schedule-modal-title">🗓️ Add PM Schedule / เพิ่มรายการ PM / 添加PM计划</h3>
+      <button class="icon-btn" id="close-pm-schedule-modal">✕</button>
+    </div>
+    <div class="field">
+      <label>Title * / ชื่องาน * / 任务名称 *</label>
+      <input type="text" id="pm-title" placeholder="e.g. Clean AC filter, Room 301 / เช่น ล้างแอร์ ห้อง 301" required>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <div class="field" style="flex:1;">
+        <label>Project / โปรเจกต์ / 项目</label>
+        <select id="pm-project"></select>
+      </div>
+      <div class="field" style="flex:1;">
+        <label>Category / ประเภทงาน / 类别</label>
+        <select id="pm-category"></select>
+      </div>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <div class="field" style="flex:1;">
+        <label>Frequency * / ความถี่ * / 频率 *</label>
+        <select id="pm-frequency"></select>
+      </div>
+      <div class="field" style="flex:1;">
+        <label id="pm-due-date-label">Next Due Date * / วันครบกำหนดครั้งแรก * / 首次到期日期 *</label>
+        <input type="date" id="pm-due-date" required>
+      </div>
+    </div>
+    <div class="field">
+      <label>Assigned Technician / ผู้รับผิดชอบ / 负责人</label>
+      <select id="pm-assignedTech"></select>
+    </div>
+    <div class="field">
+      <label>Notes / หมายเหตุ / 备注</label>
+      <textarea id="pm-notes" rows="3"></textarea>
+    </div>
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
+      <button class="btn btn-outline" id="cancel-pm-schedule-btn">Cancel / ยกเลิก / 取消</button>
+      <button class="btn btn-primary" id="save-pm-schedule-btn">Save / บันทึก / 保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MARK PM DONE MODAL ============ -->
+<div class="modal-overlay" id="pm-complete-modal" style="display:none;">
+  <div class="modal-sheet" style="max-width:460px;">
+    <div class="modal-header">
+      <h3>✅ Mark PM as Done / บันทึกว่าทำเสร็จแล้ว / 标记PM完成</h3>
+      <button class="icon-btn" id="close-pm-complete-modal">✕</button>
+    </div>
+    <p class="hint" id="pm-complete-summary"></p>
+    <div class="field">
+      <label>Notes (optional) / หมายเหตุ (ไม่บังคับ) / 备注（可选）</label>
+      <textarea id="pm-complete-notes" rows="3" placeholder="e.g. Replaced filter, all good / เช่น เปลี่ยนไส้กรองแล้ว ปกติดี"></textarea>
+    </div>
+    <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:16px;">
+      <button class="btn btn-outline" id="cancel-pm-complete-btn">Cancel / ยกเลิก / 取消</button>
+      <button class="btn btn-primary" id="confirm-pm-complete-btn">✅ Confirm Done / ยืนยันทำเสร็จ / 确认完成</button>
     </div>
   </div>
 </div>
