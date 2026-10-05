@@ -6,10 +6,14 @@ import {
 import { showToast, formatDateThai, isOverdue, renderCompanyBrandBar } from "./utils.js";
 import { compressImageToDataUrl } from "./image-compress.js";
 import {
-  T, tri, catTri, statusTri, deptTri, urgencyTri, idNumberLabel,
+  T, tri, catTri, statusTri, deptTri, urgencyTri, pmFrequencyTri, idNumberLabel,
   msgMaxImages, msgMaxAfterImages, msgFileTooLarge, msgExportSuccess,
   jobTypeTri, contractorJobStatusTri,
 } from "./i18n.js";
+import {
+  PM_FREQUENCY, PM_FREQUENCY_ORDER, computeNextDueDate,
+  loadPmSchedules, loadPmLogs, addPmSchedule, updatePmSchedule, deletePmSchedule, completePmSchedule,
+} from "./pm-calendar.js";
 
 renderCompanyBrandBar("brand-bar", COMPANY);
 
@@ -126,6 +130,17 @@ async function main() {
     console.warn("โหลดรายการโปรเจกต์ไม่สำเร็จ", e);
     showToast(T.msgProjectLoadFail, 4000);
   }
+
+  // ปฏิทินซ่อมบำรุงเชิงป้องกัน (PM Calendar) — โหลดทั้งรายการตาราง PM และประวัติการทำเสร็จ (ดู js/pm-calendar.js)
+  let pmSchedules = [];
+  let pmLogs = [];
+  try {
+    [pmSchedules, pmLogs] = await Promise.all([loadPmSchedules(), loadPmLogs()]);
+  } catch (e) {
+    console.warn("โหลดข้อมูล PM Calendar ไม่สำเร็จ", e);
+    showToast(T.msgPmLoadFail, 4000);
+  }
+
   const UNASSIGNED_PROJECT_KEY = "__unassigned__"; // ค่าที่ใช้แทน "รายการเก่าที่ยังไม่มีโปรเจกต์ระบุไว้"
   const PROJECT_SCOPE_KEY = "repairAdminProjectScope";
   let selectedProjectScope = localStorage.getItem(PROJECT_SCOPE_KEY) || ""; // "" = ทุกโปรเจกต์
@@ -251,6 +266,12 @@ async function main() {
     fillSelect(document.getElementById("filter-category"), categories.map((c) => c.label), false, catTri);
     document.getElementById("filter-category").insertAdjacentHTML("afterbegin", `<option value="">${T.filterAllCategory}</option>`);
     fillSelect(document.getElementById("d-category"), categories.map((c) => c.label), false, catTri);
+    const pmCatEl = document.getElementById("pm-category");
+    if (pmCatEl) {
+      const prevValue = pmCatEl.value;
+      fillSelect(pmCatEl, categories.map((c) => c.label), true, catTri);
+      if (categories.some((c) => c.label === prevValue)) pmCatEl.value = prevValue;
+    }
   }
   refreshCategorySelects();
   // ตั้งค่าตัวกรองประเภทงานให้เป็น "ทั้งหมด" เฉพาะครั้งแรกที่โหลดหน้า (เหตุผลเดียวกับด้านบน) —
@@ -267,11 +288,13 @@ async function main() {
   // ตัวเลือก "ช่างผู้รับผิดชอบ" ในหน้าต่างแก้ไขรายการ — ใช้รายชื่อแอดมิน/ช่างชุดเดียวกับตัวเลือกชื่อผู้ใช้งาน
   // (รวมที่ปิดใช้งานแล้วด้วย กันไม่ให้แก้ไขรายการเก่าที่เคยมอบหมายให้คนที่ปิดใช้งานไปแล้วไม่ได้)
   function refreshTechSelect() {
-    const el = document.getElementById("d-assignedTech");
-    if (!el) return;
-    const prevValue = el.value;
-    fillSelect(el, admins.map((a) => a.name), true, (n) => n);
-    if (admins.some((a) => a.name === prevValue)) el.value = prevValue;
+    ["d-assignedTech", "pm-assignedTech"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const prevValue = el.value;
+      fillSelect(el, admins.map((a) => a.name), true, (n) => n);
+      if (admins.some((a) => a.name === prevValue)) el.value = prevValue;
+    });
   }
   refreshTechSelect();
 
@@ -290,13 +313,25 @@ async function main() {
     updateOtherAppLink();
 
     fillSelect(document.getElementById("d-project"), projects.map((p) => p.label), true, (o) => o);
+
+    const pmProjEl = document.getElementById("pm-project");
+    if (pmProjEl) {
+      const prevValue = pmProjEl.value;
+      fillSelect(pmProjEl, projects.map((p) => p.label), true, (o) => o);
+      if (projects.some((p) => p.label === prevValue)) pmProjEl.value = prevValue;
+    }
   }
   refreshProjectSelects();
+
+  // ตัวเลือกความถี่ PM — ตั้งครั้งเดียวตอนโหลดหน้า (รายการคงที่ ไม่เปลี่ยนแปลงระหว่างใช้งาน)
+  const pmFrequencyEl = document.getElementById("pm-frequency");
+  if (pmFrequencyEl) fillSelect(pmFrequencyEl, PM_FREQUENCY_ORDER, false, pmFrequencyTri);
   document.getElementById("project-switcher").addEventListener("change", (e) => {
     selectedProjectScope = e.target.value;
     localStorage.setItem(PROJECT_SCOPE_KEY, selectedProjectScope);
     updateOtherAppLink();
     renderAll();
+    renderPmAll();
   });
 
   document.getElementById("d-status").addEventListener("change", (e) => {
@@ -2283,6 +2318,296 @@ async function main() {
 
   const kpiRefreshBtn = document.getElementById("kpi-refresh-btn");
   if (kpiRefreshBtn) kpiRefreshBtn.addEventListener("click", renderKPI);
+
+  // ---------------- PM CALENDAR (ปฏิทินซ่อมบำรุงเชิงป้องกัน) ----------------
+  let pmCalendarMonth = new Date();
+  pmCalendarMonth.setDate(1);
+  pmCalendarMonth.setHours(0, 0, 0, 0);
+
+  const PM_MONTH_NAMES_EN = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+  const PM_MONTH_NAMES_TH = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];
+
+  function renderPmCalendar() {
+    const grid = document.getElementById("pm-cal-grid");
+    if (!grid) return;
+    const year = pmCalendarMonth.getFullYear();
+    const month = pmCalendarMonth.getMonth();
+    document.getElementById("pm-cal-month-label").textContent = `${PM_MONTH_NAMES_EN[month]} / ${PM_MONTH_NAMES_TH[month]} ${year}`;
+
+    const scopedSchedules = pmSchedules.filter(withinProjectScope).filter((s) => s.active !== false);
+    const scopedLogs = pmLogs.filter(withinProjectScope);
+
+    const dueMap = new Map();
+    scopedSchedules.forEach((s) => {
+      if (!s.nextDueDate) return;
+      if (!dueMap.has(s.nextDueDate)) dueMap.set(s.nextDueDate, []);
+      dueMap.get(s.nextDueDate).push(s);
+    });
+    const doneMap = new Map();
+    scopedLogs.forEach((l) => {
+      if (!l.completedDate) return;
+      if (!doneMap.has(l.completedDate)) doneMap.set(l.completedDate, []);
+      doneMap.get(l.completedDate).push(l);
+    });
+
+    const firstWeekday = new Date(year, month, 1).getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    let html = "";
+    for (let i = 0; i < firstWeekday; i++) html += `<div class="pm-cal-cell pm-cal-empty"></div>`;
+    for (let day = 1; day <= daysInMonth; day++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const dueItems = dueMap.get(dateStr) || [];
+      const doneItems = doneMap.get(dateStr) || [];
+      const isToday = dateStr === todayStr;
+      const isPast = dateStr < todayStr;
+      let dueBadge = "";
+      if (dueItems.length) {
+        const cls = isPast ? "overdue" : isToday ? "today" : "upcoming";
+        dueBadge = `<span class="pm-cal-badge ${cls}">${dueItems.length}</span>`;
+      }
+      const doneBadge = doneItems.length ? `<span class="pm-cal-badge done">✓${doneItems.length}</span>` : "";
+      html += `<div class="pm-cal-cell ${isToday ? "pm-cal-today" : ""}"><div class="pm-cal-daynum">${day}</div><div class="pm-cal-badges">${dueBadge}${doneBadge}</div></div>`;
+    }
+    grid.innerHTML = html;
+  }
+
+  const pmCalPrevBtn = document.getElementById("pm-cal-prev-btn");
+  const pmCalNextBtn = document.getElementById("pm-cal-next-btn");
+  if (pmCalPrevBtn) pmCalPrevBtn.addEventListener("click", () => { pmCalendarMonth.setMonth(pmCalendarMonth.getMonth() - 1); renderPmCalendar(); });
+  if (pmCalNextBtn) pmCalNextBtn.addEventListener("click", () => { pmCalendarMonth.setMonth(pmCalendarMonth.getMonth() + 1); renderPmCalendar(); });
+
+  function renderPmScheduleTable() {
+    const tbody = document.getElementById("pm-schedule-tbody");
+    if (!tbody) return;
+    const scoped = pmSchedules.filter(withinProjectScope);
+    scoped.sort((a, b) => (a.nextDueDate || "").localeCompare(b.nextDueDate || ""));
+    const emptyState = document.getElementById("empty-pm-schedule-state");
+    if (!scoped.length) {
+      tbody.innerHTML = "";
+      emptyState.innerHTML = `<div class="empty-state"><span class="emoji">🗓️</span>${T.emptyPmScheduleState}</div>`;
+      return;
+    }
+    emptyState.innerHTML = "";
+    const todayStr = new Date().toISOString().slice(0, 10);
+    tbody.innerHTML = scoped
+      .map((s) => {
+        const isPast = s.nextDueDate && s.nextDueDate < todayStr;
+        const isToday = s.nextDueDate === todayStr;
+        const dueClass = isPast ? "overdue" : "";
+        const dueLabel = isPast
+          ? ` <span class="badge" style="background:#fee2e2; color:#991b1b;">${T.pmOverdueLabel}</span>`
+          : isToday
+          ? ` <span class="badge" style="background:#ffedd5; color:#9a3412;">${T.pmDueTodayLabel}</span>`
+          : "";
+        const disabledBadge = s.active === false ? `<span class="badge" style="background:#fee2e2; color:#991b1b;">${T.badgePmDisabled}</span>` : "";
+        return `
+          <tr data-pm-id="${s.id}">
+            <td>${escapeHtml(s.title || "-")} ${disabledBadge}</td>
+            <td>${escapeHtml(s.project || T.unassignedProjectLabel)}</td>
+            <td>${pmFrequencyTri(s.frequency || PM_FREQUENCY.MONTHLY)}</td>
+            <td class="${dueClass}">${formatDateThai(s.nextDueDate)}${dueLabel}</td>
+            <td>${escapeHtml(s.assignedTech || "-")}</td>
+            <td>
+              <button class="btn btn-primary btn-sm pm-complete-btn" data-id="${s.id}" ${s.active === false ? "disabled" : ""}>${T.btnPmMarkDone}</button>
+              <button class="btn btn-outline btn-sm pm-edit-btn" data-id="${s.id}">${T.btnPmEdit}</button>
+              <button class="btn btn-outline btn-sm pm-toggle-btn" data-id="${s.id}">${s.active === false ? T.btnPmEnable : T.btnPmDisable}</button>
+              <button class="btn btn-sm pm-delete-btn" style="background:#fee2e2; color:#991b1b; border:1px solid #fca5a5;" data-id="${s.id}">${T.btnPmDelete}</button>
+            </td>
+          </tr>`;
+      })
+      .join("");
+
+    tbody.querySelectorAll(".pm-complete-btn").forEach((btn) => btn.addEventListener("click", () => openPmCompleteModal(btn.dataset.id)));
+    tbody.querySelectorAll(".pm-edit-btn").forEach((btn) => btn.addEventListener("click", () => openPmScheduleModal(btn.dataset.id)));
+    tbody.querySelectorAll(".pm-toggle-btn").forEach((btn) => btn.addEventListener("click", () => togglePmSchedule(btn.dataset.id)));
+    tbody.querySelectorAll(".pm-delete-btn").forEach((btn) => btn.addEventListener("click", () => deletePmScheduleRow(btn.dataset.id)));
+  }
+
+  function renderPmHistoryTable() {
+    const tbody = document.getElementById("pm-history-tbody");
+    if (!tbody) return;
+    const scoped = pmLogs.filter(withinProjectScope);
+    scoped.sort((a, b) => (b.completedDate || "").localeCompare(a.completedDate || ""));
+    const emptyState = document.getElementById("empty-pm-history-state");
+    const recent = scoped.slice(0, 100); // จำกัดแสดงผล 100 รายการล่าสุด กันตารางยาวเกินไปถ้าสะสมนาน
+    if (!recent.length) {
+      tbody.innerHTML = "";
+      emptyState.innerHTML = `<div class="empty-state"><span class="emoji">📜</span>${T.emptyPmHistoryState}</div>`;
+      return;
+    }
+    emptyState.innerHTML = "";
+    tbody.innerHTML = recent
+      .map(
+        (l) => `
+        <tr>
+          <td>${escapeHtml(l.scheduleTitle || "-")}</td>
+          <td>${escapeHtml(l.project || T.unassignedProjectLabel)}</td>
+          <td>${formatDateThai(l.dueDateAtCompletion)}</td>
+          <td>${formatDateThai(l.completedDate)}</td>
+          <td>${escapeHtml(l.completedBy || "-")}</td>
+          <td>${escapeHtml(l.notes || "-")}</td>
+        </tr>`
+      )
+      .join("");
+  }
+
+  function renderPmAll() {
+    renderPmCalendar();
+    renderPmScheduleTable();
+    renderPmHistoryTable();
+  }
+  renderPmAll();
+
+  // ---------------- ADD / EDIT PM SCHEDULE MODAL ----------------
+  let activePmScheduleId = null;
+  const pmScheduleModal = document.getElementById("pm-schedule-modal");
+
+  function openPmScheduleModal(id) {
+    activePmScheduleId = id || null;
+    const s = id ? pmSchedules.find((x) => x.id === id) : null;
+    document.getElementById("pm-schedule-modal-title").textContent = s
+      ? tri("✏️ Edit PM Schedule", "✏️ แก้ไขรายการ PM", "✏️ 编辑PM计划")
+      : tri("🗓️ Add PM Schedule", "🗓️ เพิ่มรายการ PM", "🗓️ 添加PM计划");
+    document.getElementById("pm-title").value = s?.title || "";
+    document.getElementById("pm-project").value = s?.project || "";
+    document.getElementById("pm-category").value = s?.category || "";
+    document.getElementById("pm-frequency").value = s?.frequency || PM_FREQUENCY.MONTHLY;
+    document.getElementById("pm-due-date").value = s?.nextDueDate || "";
+    document.getElementById("pm-assignedTech").value = s?.assignedTech || "";
+    document.getElementById("pm-notes").value = s?.notes || "";
+    pmScheduleModal.style.display = "flex";
+  }
+
+  document.getElementById("close-pm-schedule-modal").addEventListener("click", () => { pmScheduleModal.style.display = "none"; });
+  document.getElementById("cancel-pm-schedule-btn").addEventListener("click", () => { pmScheduleModal.style.display = "none"; });
+  document.getElementById("add-pm-schedule-btn").addEventListener("click", () => openPmScheduleModal(null));
+
+  document.getElementById("save-pm-schedule-btn").addEventListener("click", async () => {
+    const title = document.getElementById("pm-title").value.trim();
+    const nextDueDate = document.getElementById("pm-due-date").value;
+    if (!title) {
+      showToast(T.msgPmTitleRequired);
+      return;
+    }
+    if (!nextDueDate) {
+      showToast(T.msgPmDueDateRequired);
+      return;
+    }
+    const payload = {
+      title,
+      project: document.getElementById("pm-project").value,
+      category: document.getElementById("pm-category").value,
+      frequency: document.getElementById("pm-frequency").value || PM_FREQUENCY.MONTHLY,
+      nextDueDate,
+      assignedTech: document.getElementById("pm-assignedTech").value,
+      notes: document.getElementById("pm-notes").value.trim(),
+    };
+    const btn = document.getElementById("save-pm-schedule-btn");
+    btn.disabled = true;
+    try {
+      if (activePmScheduleId) {
+        await updatePmSchedule(activePmScheduleId, payload);
+        const idx = pmSchedules.findIndex((x) => x.id === activePmScheduleId);
+        if (idx !== -1) pmSchedules[idx] = { ...pmSchedules[idx], ...payload };
+        showToast(T.msgPmSaved);
+      } else {
+        const newId = await addPmSchedule(payload);
+        pmSchedules.push({ id: newId, ...payload, active: true });
+        showToast(T.msgPmAdded);
+      }
+      pmScheduleModal.style.display = "none";
+      renderPmAll();
+    } catch (e) {
+      console.error(e);
+      showToast(T.errorPrefix + e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  async function togglePmSchedule(id) {
+    const s = pmSchedules.find((x) => x.id === id);
+    if (!s) return;
+    const nextActive = s.active === false ? true : false;
+    try {
+      await updatePmSchedule(id, { active: nextActive });
+      s.active = nextActive;
+      renderPmAll();
+      showToast(T.msgPmSaved);
+    } catch (e) {
+      console.error(e);
+      showToast(T.errorPrefix + e.message);
+    }
+  }
+
+  async function deletePmScheduleRow(id) {
+    const s = pmSchedules.find((x) => x.id === id);
+    if (!s) return;
+    if (!confirm(T.confirmPmDelete)) return;
+    try {
+      await deletePmSchedule(id);
+      pmSchedules = pmSchedules.filter((x) => x.id !== id);
+      renderPmAll();
+      showToast(T.msgPmDeleted);
+    } catch (e) {
+      console.error(e);
+      showToast(T.errorPrefix + e.message);
+    }
+  }
+
+  // ---------------- MARK PM DONE MODAL ----------------
+  let activePmCompleteId = null;
+  const pmCompleteModal = document.getElementById("pm-complete-modal");
+
+  function openPmCompleteModal(id) {
+    const s = pmSchedules.find((x) => x.id === id);
+    if (!s) return;
+    activePmCompleteId = id;
+    document.getElementById("pm-complete-summary").textContent =
+      `${s.title || ""} — ${tri("due", "ครบกำหนด", "到期")} ${formatDateThai(s.nextDueDate)}`;
+    document.getElementById("pm-complete-notes").value = "";
+    pmCompleteModal.style.display = "flex";
+  }
+  document.getElementById("close-pm-complete-modal").addEventListener("click", () => { pmCompleteModal.style.display = "none"; });
+  document.getElementById("cancel-pm-complete-btn").addEventListener("click", () => { pmCompleteModal.style.display = "none"; });
+
+  document.getElementById("confirm-pm-complete-btn").addEventListener("click", async () => {
+    const s = pmSchedules.find((x) => x.id === activePmCompleteId);
+    if (!s) return;
+    const btn = document.getElementById("confirm-pm-complete-btn");
+    btn.disabled = true;
+    try {
+      const notes = document.getElementById("pm-complete-notes").value;
+      const completedBy = currentIdentity ? `${currentIdentity.id} - ${currentIdentity.name}` : tri("Admin", "แอดมิน", "管理员");
+      const nextDue = await completePmSchedule(s, { completedBy, notes });
+      // อัปเดตค่าใน state ฝั่งหน้าเว็บให้ตรงกับที่เพิ่งเขียนลง Firestore ไป (ไม่ต้องรอโหลดใหม่)
+      pmLogs.push({
+        id: `local-${Date.now()}`,
+        scheduleId: s.id,
+        scheduleTitle: s.title,
+        project: s.project || "",
+        dueDateAtCompletion: s.nextDueDate,
+        completedDate: new Date().toISOString().slice(0, 10),
+        completedBy,
+        notes,
+      });
+      if (nextDue) {
+        s.nextDueDate = nextDue;
+      } else {
+        s.active = false;
+      }
+      showToast(T.msgPmCompleted);
+      pmCompleteModal.style.display = "none";
+      renderPmAll();
+    } catch (e) {
+      console.error(e);
+      showToast(T.errorPrefix + e.message);
+    } finally {
+      btn.disabled = false;
+    }
+  });
 
   function applyTableFilters(items) {
     const status = document.getElementById("filter-status").value;
