@@ -36,6 +36,17 @@ export const STATUS_TRI = {
   "ส่งต่อให้แผนกอื่นทำต่อ": tri("Forwarded to Another Dept.", "ส่งต่อให้แผนกอื่นทำต่อ", "转交其他部门处理"),
 };
 
+// ---------- ความถี่งาน PM (key = PM_FREQUENCY.* ใน js/pm-calendar.js) ----------
+export const PM_FREQUENCY_TRI = {
+  "รายวัน": tri("Daily", "รายวัน", "每日"),
+  "รายสัปดาห์": tri("Weekly", "รายสัปดาห์", "每周"),
+  "รายเดือน": tri("Monthly", "รายเดือน", "每月"),
+  "รายไตรมาส": tri("Quarterly", "รายไตรมาส", "每季度"),
+  "รายปี": tri("Yearly", "รายปี", "每年"),
+  "ครั้งเดียว": tri("One-time", "ครั้งเดียว", "一次性"),
+};
+export function pmFrequencyTri(label) { return PM_FREQUENCY_TRI[label] || label; }
+
 // ---------- ความเร่งด่วน (key = URGENCY.* เดิมใน config.js) ----------
 export const URGENCY_TRI = {
   "หยุดทำงานทั้งระบบ": tri("Shutdown", "หยุดทำงานทั้งระบบ", "停机"),
@@ -263,6 +274,27 @@ export const T = {
   msgAdminAdded: tri("Admin added successfully", "เพิ่มแอดมินสำเร็จ", "管理员添加成功"),
   msgAdminSaved: tri("Admin updated successfully", "บันทึกแอดมินสำเร็จ", "管理员已成功更新"),
   msgAdminLoadFail: tri("Unable to load the admin list. Please refresh this page", "โหลดรายชื่อแอดมินไม่สำเร็จ กรุณารีเฟรชหน้านี้", "无法加载管理员名单，请刷新此页面"),
+
+  // -------- ปฏิทินซ่อมบำรุงเชิงป้องกัน (PM Calendar) --------
+  btnAddPmSchedule: tri("+ Add PM Schedule", "+ เพิ่มรายการ PM", "+ 添加PM计划"),
+  btnPmMarkDone: tri("✅ Mark Done", "✅ ทำเสร็จแล้ว", "✅ 标记完成"),
+  btnPmEdit: tri("✏️ Edit", "✏️ แก้ไข", "✏️ 编辑"),
+  btnPmDelete: tri("🗑️ Delete", "🗑️ ลบ", "🗑️ 删除"),
+  btnPmDisable: tri("Disable", "ปิดใช้งาน", "停用"),
+  btnPmEnable: tri("Enable", "เปิดใช้งาน", "启用"),
+  badgePmDisabled: tri("Disabled", "ปิดใช้งานอยู่", "已停用"),
+  msgPmTitleRequired: tri("Please enter a PM task title", "กรุณากรอกชื่องาน PM", "请输入PM任务名称"),
+  msgPmDueDateRequired: tri("Please select the first due date", "กรุณาระบุวันครบกำหนดครั้งแรก", "请选择首次到期日期"),
+  msgPmAdded: tri("PM schedule added successfully", "เพิ่มรายการ PM สำเร็จ", "PM计划添加成功"),
+  msgPmSaved: tri("PM schedule updated successfully", "บันทึกรายการ PM สำเร็จ", "PM计划已成功更新"),
+  msgPmCompleted: tri("Marked as done — next due date updated automatically", "บันทึกว่าทำเสร็จแล้ว — เลื่อนวันครบกำหนดครั้งถัดไปให้อัตโนมัติ", "已标记完成——下次到期日期已自动更新"),
+  msgPmDeleted: tri("PM schedule deleted", "ลบรายการ PM แล้ว", "PM计划已删除"),
+  msgPmLoadFail: tri("Unable to load PM schedules. Please refresh this page", "โหลดรายการ PM ไม่สำเร็จ กรุณารีเฟรชหน้านี้", "无法加载PM计划，请刷新此页面"),
+  confirmPmDelete: tri("Delete this PM schedule permanently? This cannot be undone.", "ลบรายการ PM นี้ถาวร? กู้คืนไม่ได้", "永久删除此PM计划？无法撤销"),
+  emptyPmScheduleState: tri("No PM schedules yet — click \"+ Add PM Schedule\" to create the first one", "ยังไม่มีรายการ PM — กด \"+ เพิ่มรายการ PM\" เพื่อสร้างรายการแรก", "尚无PM计划——点击\"添加PM计划\"创建第一个"),
+  emptyPmHistoryState: tri("No completed PM records yet", "ยังไม่มีประวัติการทำ PM เสร็จ", "尚无PM完成记录"),
+  pmOverdueLabel: tri("Overdue", "เกินกำหนด", "已逾期"),
+  pmDueTodayLabel: tri("Due Today", "ครบกำหนดวันนี้", "今日到期"),
 
   // -------- แผนที่ (map-picker.js) --------
   mapNoResults: tri("No location found", "ไม่พบสถานที่", "未找到地点"),
