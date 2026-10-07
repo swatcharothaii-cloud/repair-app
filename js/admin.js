@@ -1828,6 +1828,17 @@ async function main() {
     });
   });
 
+  // ---------------- ADMIN TOOLS TAB BAR (PM Calendar / Projects / Admins / Categories / Contractors / Jobs) ----------------
+  // แทนที่ accordion เดิม (details/summary) — คลิกแท็บเพื่อสลับว่าจะโชว์ panel ไหน แสดงทีละอันเท่านั้น
+  document.querySelectorAll(".admin-tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const targetId = btn.dataset.tabTarget;
+      document.querySelectorAll(".admin-tab-btn").forEach((b) => b.classList.remove("active"));
+      btn.classList.add("active");
+      document.querySelectorAll(".admin-tab-panel").forEach((p) => p.classList.toggle("active", p.id === targetId));
+    });
+  });
+
   ["filter-status", "filter-category", "filter-urgency", "filter-search"].forEach((id) => {
     document.getElementById(id).addEventListener("input", renderAll);
   });
