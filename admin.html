@@ -99,8 +99,22 @@
     </div>
   </details>
 
-  <details class="chart-card" id="pm-calendar-section" open>
-    <summary style="cursor:pointer; font-weight:600; font-size:15px;">🗓️ PM Calendar / ปฏิทินซ่อมบำรุงเชิงป้องกัน / 预防性维护日历</summary>
+  <!-- ============ ADMIN TOOLS TAB BAR ============ -->
+  <!-- แทนที่ accordion เดิม (details/summary 6 อัน) ด้วยแท็บบาร์ — คลิกแท็บเพื่อสลับเนื้อหา แสดงทีละแท็บเท่านั้น
+       เลื่อนซ้าย-ขวาได้บนจอมือถือถ้าแท็บยาวเกินความกว้างจอ ดู .admin-tabs ใน css/style.css และการเชื่อมปุ่มใน js/admin.js -->
+  <div class="admin-tabs" id="admin-tools-tabbar">
+    <button type="button" class="admin-tab-btn active" data-tab-target="pm-calendar-section">🗓️ PM Calendar</button>
+    <button type="button" class="admin-tab-btn" data-tab-target="project-manager">📁 Projects</button>
+    <button type="button" class="admin-tab-btn" data-tab-target="admin-manager">🧑‍💼 Admins</button>
+    <button type="button" class="admin-tab-btn" data-tab-target="category-manager">🗂️ Categories</button>
+    <button type="button" class="admin-tab-btn" data-tab-target="contractor-manager">👷 Contractors</button>
+    <button type="button" class="admin-tab-btn" data-tab-target="contractor-jobs-panel">🚚 Jobs</button>
+  </div>
+
+  <div class="admin-tab-panels">
+
+  <div class="chart-card admin-tab-panel active" id="pm-calendar-section">
+    <div class="admin-tab-panel-title">🗓️ PM Calendar / ปฏิทินซ่อมบำรุงเชิงป้องกัน / 预防性维护日历</div>
     <div style="margin-top:16px;">
       <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:14px;">
         <div style="display:flex; align-items:center; gap:10px;">
@@ -158,10 +172,10 @@
       </div>
       <div id="empty-pm-history-state"></div>
     </div>
-  </details>
+  </div>
 
-  <details class="chart-card" id="project-manager">
-    <summary style="cursor:pointer; font-weight:600; font-size:15px;">📁 Manage Projects / จัดการโปรเจกต์ / 管理项目</summary>
+  <div class="chart-card admin-tab-panel" id="project-manager">
+    <div class="admin-tab-panel-title">📁 Manage Projects / จัดการโปรเจกต์ / 管理项目</div>
     <div style="margin-top:16px;">
       <form id="project-add-form" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:16px;">
         <div class="field" style="flex:1; min-width:180px; margin-bottom:0;">
@@ -198,10 +212,10 @@
         <p class="hint" id="proj-merge-result" style="margin-top:8px;"></p>
       </div>
     </div>
-  </details>
+  </div>
 
-  <details class="chart-card" id="admin-manager">
-    <summary style="cursor:pointer; font-weight:600; font-size:15px;">🧑‍💼 Manage Admins / จัดการรายชื่อแอดมิน / 管理管理员名单</summary>
+  <div class="chart-card admin-tab-panel" id="admin-manager">
+    <div class="admin-tab-panel-title">🧑‍💼 Manage Admins / จัดการรายชื่อแอดมิน / 管理管理员名单</div>
     <div style="margin-top:16px;">
       <form id="admin-add-form" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:16px;">
         <div class="field" style="flex:1; min-width:180px; margin-bottom:0;">
@@ -217,10 +231,10 @@
         注意：此管理员名单与工程款申请系统共用（同一数据库）——在此新增/编辑也会同步更新至另一系统。停用某管理员只会将其从姓名选择页隐藏，仍会保留在其编辑过的旧记录中，不影响历史数据
       </p>
     </div>
-  </details>
+  </div>
 
-  <details class="chart-card" id="category-manager">
-    <summary style="cursor:pointer; font-weight:600; font-size:15px;">🗂️ Manage Work Categories / จัดการประเภทงาน / 管理维修类别</summary>
+  <div class="chart-card admin-tab-panel" id="category-manager">
+    <div class="admin-tab-panel-title">🗂️ Manage Work Categories / จัดการประเภทงาน / 管理维修类别</div>
     <div style="margin-top:16px;">
       <form id="category-add-form" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:16px;">
         <div class="field" style="flex:0 0 64px; margin-bottom:0;">
@@ -244,10 +258,10 @@
         注意：类别名称将以泰文实际填写内容保存。停用某类别只会将其从新报修表单中隐藏，仍会显示在报表／筛选中，不影响旧数据
       </p>
     </div>
-  </details>
+  </div>
 
-  <details class="chart-card" id="contractor-manager">
-    <summary style="cursor:pointer; font-weight:600; font-size:15px;">👷 Manage Contractors / จัดการรายชื่อผู้รับเหมา / 管理承包商名单</summary>
+  <div class="chart-card admin-tab-panel" id="contractor-manager">
+    <div class="admin-tab-panel-title">👷 Manage Contractors / จัดการรายชื่อผู้รับเหมา / 管理承包商名单</div>
     <div style="margin-top:16px;">
       <form id="contractor-add-form" style="display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:16px;">
         <div class="field" style="flex:1; min-width:160px; margin-bottom:0;">
@@ -275,10 +289,10 @@
         注意：LINE 联系方式仅供管理员参考，本系统不会自动发送 LINE 消息，请自行复制工程链接并粘贴到 LINE 聊天中
       </p>
     </div>
-  </details>
+  </div>
 
-  <details class="chart-card" id="contractor-jobs-panel" open>
-    <summary style="cursor:pointer; font-weight:600; font-size:15px;">🚚 Contractor Jobs / งานที่ส่งให้ผู้รับเหมา / 承包商工程</summary>
+  <div class="chart-card admin-tab-panel" id="contractor-jobs-panel">
+    <div class="admin-tab-panel-title">🚚 Contractor Jobs / งานที่ส่งให้ผู้รับเหมา / 承包商工程</div>
     <div style="margin-top:16px;">
       <div style="display:flex; justify-content:flex-end; margin-bottom:12px;">
         <button class="btn btn-primary btn-sm" id="add-contractor-job-btn">+ Send job to contractor / ส่งงานให้ผู้รับเหมา / 发送工程给承包商</button>
@@ -302,7 +316,9 @@
       </div>
       <div id="empty-contractor-jobs-state"></div>
     </div>
-  </details>
+  </div>
+
+  </div><!-- /.admin-tab-panels -->
 
   <div class="filter-bar">
     <select id="filter-status">
